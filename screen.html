@@ -1,0 +1,100 @@
+<div style="padding: 24px; box-sizing: border-box;">
+
+  <!-- Header -->
+  <div style="margin-bottom: 20px;">
+    <h1 style="font-size: 1.25rem; font-weight: 700; color: #fff; margin: 0 0 4px 0;">AmpliTube 5 Tone Switcher</h1>
+    <p style="font-size: 0.75rem; color: #6b7280; margin: 0;">Automatic MIDI preset switching synced to song playback</p>
+  </div>
+
+  <!-- Tabs -->
+  <div style="border-bottom: 1px solid #1f2937; display: flex; margin-bottom: 20px;">
+    <button id="at5-tabbtn-status" onclick="at5ShowTab('status')"
+      style="padding: 8px 16px; font-size: 0.875rem; font-weight: 500; border: none; border-bottom: 2px solid #f97316; color: #fff; background: transparent; cursor: pointer;">
+      Status
+    </button>
+    <button id="at5-tabbtn-browser" onclick="at5ShowTab('browser')"
+      style="padding: 8px 16px; font-size: 0.875rem; font-weight: 500; border: none; border-bottom: 2px solid transparent; color: #6b7280; background: transparent; cursor: pointer;">
+      Tone Browser
+    </button>
+    <button id="at5-tabbtn-log" onclick="at5ShowTab('log')"
+      style="padding: 8px 16px; font-size: 0.875rem; font-weight: 500; border: none; border-bottom: 2px solid transparent; color: #6b7280; background: transparent; cursor: pointer;">
+      Live Log
+    </button>
+
+  </div>
+
+  <!-- Tab: Status -->
+  <div id="at5-tab-status">
+    <div id="at5-midi-status" style="margin-bottom: 16px;"></div>
+
+    <div style="background: rgba(55,65,81,0.3); border: 1px solid rgba(31,41,55,0.5); border-radius: 12px; padding: 16px;">
+      <p style="font-size: 0.75rem; font-weight: 600; color: #9ca3af; margin: 0 0 8px 0;">How it works</p>
+      <p style="font-size: 0.75rem; color: #4b5563; line-height: 1.6; margin: 0;">
+        When you load a song, the plugin extracts its tones from the song file, converts them to
+        AmpliTube 5 presets in real time (~50ms), and automatically sends MIDI Program Change
+        messages to AT5 as each tone change fires during playback.
+        The <strong style="color:#9ca3af;">Tone Browser</strong> tab lets you preview any song's tones and manually trigger them.
+        The <strong style="color:#9ca3af;">Live Log</strong> captures every tone switch during your session.
+      </p>
+    </div>
+  </div>
+
+  <!-- Tab: Tone Browser -->
+  <div id="at5-tab-browser" style="display:none;">
+    <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+      <input type="text" id="at5-search"
+        placeholder="Search by song, artist or tone..."
+        onkeydown="if(event.key==='Enter') at5SearchSongs()"
+        style="flex: 1; min-width: 180px; background: #374151; border: 1px solid #1f2937; border-radius: 12px; padding: 10px 16px; font-size: 0.875rem; color: #d1d5db;">
+      <select id="at5-search-format"
+        style="background: #374151; border: 1px solid #1f2937; border-radius: 12px; padding: 10px 12px; font-size: 0.875rem; color: #d1d5db; cursor: pointer;">
+        <option value="">All formats</option>
+        <option value="cdlc">CDLC</option>
+        <option value="loose">Loose folders</option>
+        <option value="sloppak">Sloppak</option>
+      </select>
+      <button onclick="at5SearchSongs()"
+        style="background: #374151; border: none; padding: 10px 20px; border-radius: 12px; font-size: 0.875rem; color: #d1d5db; cursor: pointer;">
+        Search
+      </button>
+    </div>
+
+    <div id="at5-search-results" style="margin-bottom: 16px;"></div>
+
+    <div id="at5-editor" style="display:none;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h3 style="font-size: 0.875rem; font-weight: 600; color: #d1d5db; margin: 0;" id="at5-editor-title"></h3>
+        <div style="display: flex; gap: 12px; font-size: 0.75rem; color: #4b5563;">
+          <span><span style="color:#22c55e;">●</span> live slot</span>
+          <span><span style="color:#60a5fa;">●</span> PC table</span>
+          <span><span style="color:#ef4444;">●</span> unmapped</span>
+        </div>
+      </div>
+      <div id="at5-mappings"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Live Log -->
+  <div id="at5-tab-log" style="display:none;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+      <p style="font-size: 0.75rem; color: #6b7280; margin: 0;">Tone switches fired this session, most recent first. Click ▶ to re-send.</p>
+      <button onclick="_at5Log.length=0; _at5RefreshLogUI()"
+        style="font-size: 0.75rem; color: #4b5563; border: 1px solid #1f2937; border-radius: 4px; padding: 4px 8px; background: transparent; cursor: pointer;">
+        Clear
+      </button>
+    </div>
+    <div id="at5-log-list">
+      <p style="font-size: 0.75rem; color: #4b5563; padding: 16px 0; text-align: center;">Play a song to see tone switches here.</p>
+    </div>
+  </div>
+
+  
+
+</div>
+
+<script>
+setTimeout(() => {
+    if (typeof _at5RenderStatus === 'function') _at5RenderStatus();
+    if (typeof _at5RefreshLogUI === 'function') _at5RefreshLogUI();
+}, 150);
+</script>

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store
+Thumbs.db
+
+# Dev session files (not part of the plugin)
+.claude/
+session_handoff.md
+multiplayer-audio-spec.md

@@ -1,0 +1,118 @@
+<!-- AmpliTube 5 Tone Switcher — Settings Fragment -->
+<!-- Controls call window.at5SetTier, window.at5SetFreeMode, window.at5SetNoisegate -->
+<!-- from screen.js which is loaded when the AT5 plugin screen is active -->
+<!-- Injected into feedBack Settings page by plugin system -->
+<div style="margin-top: 16px;">
+  <h3 style="font-size: 0.875rem; font-weight: 600; color: #d1d5db; margin: 0 0 12px 0;">
+    AmpliTube 5 Tone Switcher
+  </h3>
+    <div style="background: rgba(55,65,81,0.3); border: 1px solid rgba(31,41,55,0.5); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+      <p style="font-size: 0.75rem; font-weight: 600; color: #9ca3af; margin: 0 0 12px 0;">Amp Mode</p>
+      <!-- MIDI trigger offset -->
+      <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(31,41,55,0.5);">
+        <p style="font-size: 0.75rem; font-weight: 600; color: #9ca3af; margin: 0 0 6px 0;">MIDI Trigger Offset</p>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="range" id="at5-prefire-slider" min="0" max="1000" step="10" value="200"
+            oninput="at5SetPrefire(this.value)"
+            style="flex: 1; accent-color: #f97316;">
+          <span id="at5-prefire-label" style="font-size: 0.875rem; color: #d1d5db; font-weight: 500; width: 60px; text-align: right;">200 ms</span>
+        </div>
+        <p style="font-size: 0.7rem; color: #6b7280; margin: 6px 0 0 0; line-height: 1.5;">
+          Send the MIDI preset change this many milliseconds <em>before</em> the tone change fires
+          in the song chart. Increase this if AT5 is switching too late — start around 200–400ms
+          and adjust by ear. Set to 0 to fire exactly on time.
+        </p>
+      </div>
+
+      <p style="font-size: 0.75rem; font-weight: 600; color: #9ca3af; margin: 0 0 8px 0;">AT5 Version</p>
+      <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 10px 0; line-height: 1.5;">
+        Select your version of AmpliTube 5. Tones are mapped to the closest gear
+        available in your version. MAX uses exact models with no fallback.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 6px;" id="at5-tier-options">
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 8px; border: 1px solid #374151; border-radius: 8px;">
+          <input type="radio" name="at5-tier" value="cs" id="at5-tier-cs" onchange="at5SetTier('cs')"
+            style="margin-top: 2px; accent-color: #f97316; flex-shrink: 0;">
+          <span>
+            <span style="font-size: 0.875rem; color: #d1d5db; font-weight: 500;">CS &mdash; Free</span>
+            <span style="font-size: 0.7rem; color: #6b7280; margin-left: 8px;">6 amps &bull; 7 cabs &bull; 10 stomps</span><br>
+            <span style="font-size: 0.7rem; color: #4b5563;">Brit 8000, American Tube Clean 1 &amp; 2, British Tube Lead 1, SLD 100, Bass Preamp</span>
+          </span>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 8px; border: 1px solid #374151; border-radius: 8px;">
+          <input type="radio" name="at5-tier" value="se" id="at5-tier-se" onchange="at5SetTier('se')"
+            style="margin-top: 2px; accent-color: #f97316; flex-shrink: 0;">
+          <span>
+            <span style="font-size: 0.875rem; color: #d1d5db; font-weight: 500;">SE</span>
+            <span style="font-size: 0.7rem; color: #6b7280; margin-left: 8px;">13 amps &bull; 14 cabs &bull; 19 stomps</span><br>
+            <span style="font-size: 0.7rem; color: #4b5563;">Adds: American Lead MKIII, Brit 9000, Jazz Amp 120, Metal Lead V/W, Modern Tube Lead</span>
+          </span>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 8px; border: 1px solid #374151; border-radius: 8px;">
+          <input type="radio" name="at5-tier" value="at5" id="at5-tier-at5" onchange="at5SetTier('at5')"
+            style="margin-top: 2px; accent-color: #f97316; flex-shrink: 0;">
+          <span>
+            <span style="font-size: 0.875rem; color: #d1d5db; font-weight: 500;">AT5</span>
+            <span style="font-size: 0.7rem; color: #6b7280; margin-left: 8px;">35 amps &bull; 28 cabs &bull; 35 stomps</span><br>
+            <span style="font-size: 0.7rem; color: #4b5563;">Adds: Brit Silver, German 34, Red Pig, American Clean MKIII, VHandcraft 4 and more</span>
+          </span>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 8px; border: 1px solid #374151; border-radius: 8px;">
+          <input type="radio" name="at5-tier" value="max" id="at5-tier-max" onchange="at5SetTier('max')" checked
+            style="margin-top: 2px; accent-color: #f97316; flex-shrink: 0;">
+          <span>
+            <span style="font-size: 0.875rem; color: #d1d5db; font-weight: 500;">MAX</span>
+            <span style="font-size: 0.7rem; color: #6b7280; margin-left: 8px;">107 amps &bull; 101 cabs &bull; full library</span><br>
+            <span style="font-size: 0.7rem; color: #4b5563;">Exact model matching, no fallback. Recommended for the full AT5 collection.</span>
+          </span>
+        </label>
+      </div>
+
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(31,41,55,0.5);">
+        <p style="font-size: 0.75rem; font-weight: 600; color: #9ca3af; margin: 0 0 8px 0;">Signal Chain</p>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="at5-noise-gate-checkbox"
+            onchange="at5SetNoisegate(this.checked)"
+            style="margin-top: 3px; accent-color: #f97316; width: 14px; height: 14px; flex-shrink: 0;">
+          <span>
+            <span style="font-size: 0.875rem; color: #d1d5db; font-weight: 500;">Global Noise Gate</span><br>
+            <span style="font-size: 0.7rem; color: #6b7280; line-height: 1.5;">
+              Inserts a noise gate at pre-amp slot 0 in every converted tone.
+              Cuts hum and noise before the gain stage. Available in all AT5 versions.
+            </span>
+          </span>
+        </label>
+      </div>
+    </div>
+  
+</div>
+
+<script>
+// Restore settings state when this fragment is rendered
+(function () {
+    function restoreAt5Settings() {
+        fetch('/api/plugins/at5_tone/settings')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (!data) return;
+                var tier = data.tier || (data.free_mode ? 'cs' : 'max');
+                var radio = document.getElementById('at5-tier-' + tier);
+                if (radio) radio.checked = true;
+                var ngCb = document.getElementById('at5-noise-gate-checkbox');
+                if (ngCb) ngCb.checked = !!data.noise_gate;
+                var prefireMs = Math.round((data.prefire_ms || 0) * 1000);
+                var slider = document.getElementById('at5-prefire-slider');
+                var label  = document.getElementById('at5-prefire-label');
+                if (slider) slider.value = prefireMs;
+                if (label)  label.textContent = prefireMs + ' ms';
+            })
+            .catch(function () {});
+    }
+    // Run when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restoreAt5Settings);
+    } else {
+        restoreAt5Settings();
+    }
+})();
+</script>
