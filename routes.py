@@ -710,7 +710,7 @@ def _copy_song_presets_to_slots(song_presets: dict, slot_map_order: list,
 
 def setup(app, context):
     global _csv_path, _songs_path, _cache_path, _load_sibling_fn, log
-    # Use Slopsmith's namespaced logger
+    # Use feedBack's namespaced logger
     log = context.get("log", log)
     # Capture load_sibling for proper sibling module loading
     _load_sibling_fn = context.get("load_sibling")
@@ -1447,7 +1447,7 @@ def _detect_at5_presets_path() -> str | None:
         presets_candidates = [
             (Path("/at5docs/Presets/Converted"),                                           "docker"),
             (Path(__file__).parent.parent.parent / "Presets" / "Converted",               "desktop_symlink"),
-            (Path.home() / "AppData" / "Roaming" / "slopsmith-desktop" / "Presets" / "Converted", "desktop_symlink"),
+            (Path.home() / "AppData" / "Roaming" / "feedback-desktop" / "Presets" / "Converted", "desktop_symlink"),
         ]
         for p, mode in presets_candidates:
             if p.exists():
@@ -1471,25 +1471,25 @@ def _detect_at5_presets_path() -> str | None:
 
     @app.post("/api/plugins/at5_tone/setup/create-symlink")
     async def _setup_create_symlink(request):
-        """Create symlink from Slopsmith Presets folder to AT5 Presets folder."""
+        """Create symlink from feedBack Desktop Presets folder to AT5 Presets folder."""
         import platform, subprocess, tempfile
         if platform.system() != "Windows":
             return {"ok": False, "error": "Symlink setup only needed on Windows Desktop"}
 
         body = await request.json()
         at5_presets = body.get("at5_presets_path", "")
-        slopsmith_presets = body.get("slopsmith_presets_path", "")
+        feedback_presets = body.get("feedback_presets_path", "")
 
-        if not at5_presets or not slopsmith_presets:
+        if not at5_presets or not feedback_presets:
             at5_presets = _detect_at5_presets_path()
-            slopsmith_presets = str(Path.home() / "AppData" / "Roaming" / "slopsmith-desktop" / "Presets")
+            feedback_presets = str(Path.home() / "AppData" / "Roaming" / "feedback-desktop" / "Presets")
 
         # Check target exists
         if not Path(at5_presets).exists():
             return {"ok": False, "error": f"AT5 Presets folder not found: {at5_presets}"}
 
         # Remove existing folder if present (non-symlink)
-        sp = Path(slopsmith_presets)
+        sp = Path(feedback_presets)
         if sp.exists() and not sp.is_symlink():
             try:
                 import shutil
@@ -1499,7 +1499,7 @@ def _detect_at5_presets_path() -> str | None:
 
         # Create symlink via PowerShell (handles elevation)
         ps_cmd = (
-            f'New-Item -Path "{slopsmith_presets}" '
+            f'New-Item -Path "{feedback_presets}" '
             f'-ItemType SymbolicLink '
             f'-Target "{at5_presets}" '
             f'-Force'
@@ -1509,9 +1509,9 @@ def _detect_at5_presets_path() -> str | None:
                 ["powershell", "-NoProfile", "-Command", ps_cmd],
                 capture_output=True, text=True, timeout=15
             )
-            if result.returncode == 0 or Path(slopsmith_presets).is_symlink():
-                log.info(f"[AT5 Setup] Symlink created: {slopsmith_presets} → {at5_presets}")
-                return {"ok": True, "symlink": slopsmith_presets, "target": at5_presets}
+            if result.returncode == 0 or Path(feedback_presets).is_symlink():
+                log.info(f"[AT5 Setup] Symlink created: {feedback_presets} → {at5_presets}")
+                return {"ok": True, "symlink": feedback_presets, "target": at5_presets}
             else:
                 err = (result.stderr.strip() or result.stdout.strip() or "")
                 is_priv = "privilege" in err.lower() or "administrator" in err.lower() or "access" in err.lower()
@@ -1519,7 +1519,7 @@ def _detect_at5_presets_path() -> str | None:
                     return {
                         "ok": False,
                         "error": "Permission denied. Right-click feedBack Desktop and select 'Run as administrator', then try again.",
-                        "manual_cmd": f'New-Item -Path "{slopsmith_presets}" -ItemType SymbolicLink -Target "{at5_presets}" -Force',
+                        "manual_cmd": f'New-Item -Path "{feedback_presets}" -ItemType SymbolicLink -Target "{at5_presets}" -Force',
                     }
                 return {"ok": False, "error": err or "Unknown error creating symlink."}
         except Exception as e:

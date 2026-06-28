@@ -80,8 +80,8 @@ let _at5Log = [];
             };
         }
     }
-    if (window.slopsmith?.on) {
-        window.slopsmith.on('arrangement:changed', (e) => {
+    if (window.feedBack?.on) {
+        window.feedBack.on('arrangement:changed', (e) => {
             if (e?.detail?.filename) _at5Filename = e.detail.filename;
         });
     }
@@ -131,9 +131,9 @@ async function _at5SendPC(program, ccAdj) {
     const ch = AT5_MIDI_CH;
 
     // 1. Internal VST (Desktop) — only if AT5 is loaded as a VST in the chain
-    if (window.slopsmithDesktop?.audio) {
+    if (window.feedBackDesktop?.audio) {
         try {
-            const api = window.slopsmithDesktop.audio;
+            const api = window.feedBackDesktop.audio;
             const chain = await api.getChainState();
             const slots = chain.filter(s => s.type === 0);
             if (slots.length) {
@@ -537,7 +537,7 @@ function _at5InjectBadge() {
     btn.className = 'px-3 py-1.5 bg-orange-900/40 hover:bg-orange-900/60 rounded-lg text-xs text-orange-300 transition';
     btn.textContent = 'AT5';
     btn.title = 'AmpliTube 5 Tone Switcher — click to open';
-    btn.onclick = () => { if (typeof showScreen === 'function') showScreen('plugin-at5_tone'); };
+    btn.onclick = () => { if (typeof showScreen === 'function') showScreen('at5-tone'); };
     const closeBtn = Array.from(bar.querySelectorAll('button')).find(b =>
         b.textContent.includes('Close') || b.textContent.includes('×') || b.title?.includes('Close')
     );
@@ -565,7 +565,7 @@ function _at5UpdateBadge(toneKey, entry) {
 async function _at5RenderStatus() {
     const el = document.getElementById('at5-midi-status');
     if (!el) return;
-    const hasInternal = !!(window.slopsmithDesktop?.audio);
+    const hasInternal = !!(window.feedBackDesktop?.audio);
     const hasDesktopMidi = hasInternal; // Desktop app has direct MIDI access
     const bridgeUp = hasDesktopMidi ? false : await _at5Ping(); // skip bridge ping on desktop
     const pcCount = Object.keys(_at5PcTable).length;
@@ -907,7 +907,7 @@ async function _at5DiagMidi() {
     const lines = [`Saved output_id: ${savedId || '(none)'}`];
     lines.push(`_at5MidiOutput: ${window._at5MidiOutput ? window._at5MidiOutput.name + ' [' + window._at5MidiOutput.id + ']' : 'null'}`);
     lines.push(`_at5BridgeOk: ${window._at5BridgeOk}`);
-    lines.push(`slopsmithDesktop.audio: ${!!(window.slopsmithDesktop?.audio)}`);
+    lines.push(`feedBackDesktop.audio: ${!!(window.feedBackDesktop?.audio)}`);
     if (_at5MidiAccess) {
         const ports = [];
         _at5MidiAccess.outputs.forEach(o => ports.push(`  ${o.id} — ${o.name} [${o.state}]`));
@@ -1219,7 +1219,7 @@ window.at5SetNoisegate       = at5SetNoisegate;
     const orig = window.showScreen;
     if (orig) window.showScreen = function (id) {
         orig(id);
-        if (id === 'plugin-at5_tone') {
+        if (id === 'at5-tone') {
             _at5RenderStatus();
             _at5RefreshLogUI();
         }
@@ -1227,7 +1227,7 @@ window.at5SetNoisegate       = at5SetNoisegate;
 })();
 
 // Stub viz registration (harmless — prevents plugin manager warnings)
-window.slopsmithViz_at5tone = { init(){}, draw(){}, destroy(){} };
+window.feedBackViz_at5tone = { init(){}, draw(){}, destroy(){} };
 
 })();
 
