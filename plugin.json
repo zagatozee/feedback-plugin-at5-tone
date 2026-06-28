@@ -4,6 +4,7 @@
   "version": "0.6.2",
   "private": false,
   "description": "Automatically switch AmpliTube 5 presets in sync with CDLC playback via MIDI Program Change.",
+  "category": "audio",
   "nav": {
     "label": "AT5",
     "screen": "at5-tone"
