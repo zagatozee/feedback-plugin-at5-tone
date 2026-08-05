@@ -7,6 +7,7 @@
 import csv
 import json
 import logging
+import os
 import re
 import threading
 from pathlib import Path
@@ -473,15 +474,18 @@ def _extract_song_tones(song_path: Path) -> dict:
     tones = {}
 
     def _from_definitions(definitions):
+        # Spec shape (feedpak-v1 §6.9) is {"name", "id", "gear": {opaque}}.
+        # A converter may instead drop the raw RS2014 tone object in wholesale
+        # (top-level "Key"/"GearList"/"Name") — accept either.
         for defn in definitions:
-            tk = defn.get("Key") or defn.get("Name", "")
+            tk = defn.get("Key") or defn.get("id") or defn.get("Name") or defn.get("name", "")
             if not tk or tk in tones:
                 continue
-            gear = defn.get("GearList", {})
+            gear = defn.get("GearList") or defn.get("gear", {})
             if gear:
                 tones[tk] = {
                     "Key":      tk,
-                    "Name":     defn.get("Name", tk),
+                    "Name":     defn.get("Name") or defn.get("name", tk),
                     "GearList": _normalise_gearlist(gear),
                 }
 
@@ -509,7 +513,24 @@ def _extract_song_tones(song_path: Path) -> dict:
                     "GearList": _normalise_gearlist(obj["GearList"]),
                 }
 
-    if song_path.suffix.lower() in (".feedpak", ".sloppak"):
+    if song_path.is_dir():
+        arr_dir = song_path / "arrangements"
+        if arr_dir.is_dir():
+            for jf in arr_dir.glob("*.json"):
+                try:
+                    obj = json.loads(jf.read_text(encoding="utf-8", errors="replace"))
+                    _from_definitions(obj.get("tones", {}).get("definitions", []))
+                except Exception:
+                    pass
+        if not tones:
+            for jf in song_path.rglob("*.json"):
+                try:
+                    obj = json.loads(jf.read_text(encoding="utf-8", errors="replace"))
+                    _from_manifest_json(obj)
+                except Exception:
+                    pass
+
+    elif song_path.suffix.lower() in (".feedpak", ".sloppak"):
         import zipfile
         try:
             with zipfile.ZipFile(str(song_path), "r") as zf:
@@ -533,38 +554,21 @@ def _extract_song_tones(song_path: Path) -> dict:
         except Exception as e:
             log.warning("[AT5] Could not read song archive %s: %s", song_path.name, e)
 
-    elif song_path.is_dir():
-        arr_dir = song_path / "arrangements"
-        if arr_dir.is_dir():
-            for jf in arr_dir.glob("*.json"):
-                try:
-                    obj = json.loads(jf.read_text(encoding="utf-8", errors="replace"))
-                    _from_definitions(obj.get("tones", {}).get("definitions", []))
-                except Exception:
-                    pass
-        if not tones:
-            for jf in song_path.rglob("*.json"):
-                try:
-                    obj = json.loads(jf.read_text(encoding="utf-8", errors="replace"))
-                    _from_manifest_json(obj)
-                except Exception:
-                    pass
-
     return tones
 
 
 def _read_song_json_files(song_path: Path) -> dict:
     """Return {relative_name: bytes} for all JSON files in a song archive or folder."""
     result = {}
-    if song_path.suffix.lower() in (".feedpak", ".sloppak"):
+    if song_path.is_dir():
+        for jf in song_path.rglob("*.json"):
+            result[jf.relative_to(song_path).as_posix()] = jf.read_bytes()
+    elif song_path.suffix.lower() in (".feedpak", ".sloppak"):
         import zipfile
         with zipfile.ZipFile(str(song_path), "r") as zf:
             for name in zf.namelist():
                 if name.endswith(".json"):
                     result[name] = zf.read(name)
-    elif song_path.is_dir():
-        for jf in song_path.rglob("*.json"):
-            result[str(jf.relative_to(song_path))] = jf.read_bytes()
     return result
 
 
@@ -1175,259 +1179,6 @@ def setup(app, context):
 
         return {"tones": tones, "source": str(song_dir), "arrangement": arrangement}
 
-
-# ── CDLC tone matching ─────────────────────────────────────────────────────
-
-def _match_cdlc_tone(gear, table, tone_data):
-    """Find best PC match for a CDLC tone's GearList.
-    Returns (pc, preset_name, match_type, cc_adjustments) or None.
-    cc_adjustments includes whammy/wah CC if a wah pedal is detected.
-    """
-    amp_key = gear.get("Amp", {}).get("Key", "")
-    whammy_cc = _extract_whammy_cc(gear)   # [] or [{cc, value, knob}]
-    
-    # Build amp-key -> best PC lookup from our table
-    amp_to_pc = {}
-    for key, entry in table.items():
-        td = tone_data.get(key, {})
-        a = td.get("amp", "")
-        if a and a not in amp_to_pc:
-            amp_to_pc[a] = entry
-
-    # 1. Same amp key
-    if amp_key and amp_key in amp_to_pc:
-        e = amp_to_pc[amp_key]
-        return e["pc"], e["preset_name"], "amp_match", whammy_cc
-
-    # 2. Same amp family (e.g. Amp_CA100 -> Amp_CA38, Amp_CA85)
-    if amp_key:
-        # Extract family prefix: Amp_CA100 -> Amp_CA
-        parts = amp_key.split("_")
-        if len(parts) >= 2:
-            # Try progressively shorter prefixes
-            family = "_".join(parts[:2])  # e.g. Amp_CA
-            family_prefix = ''.join(c for c in family if not c.isdigit())  # Amp_CA
-            for a, e in amp_to_pc.items():
-                a_prefix = ''.join(c for c in a if not c.isdigit())
-                if a_prefix == family_prefix:
-                    return e["pc"], e["preset_name"], "amp_family", whammy_cc
-
-    # 3. Tone descriptor — classify by effects present
-    has_dist  = bool(gear.get("PrePedal1") or gear.get("PrePedal2"))
-    has_verb  = any(
-        "verb" in str(gear.get(f"Rack{i}", {}).get("Key", "")).lower() or
-        "verb" in str(gear.get(f"PostPedal{i}", {}).get("Key", "")).lower()
-        for i in [1, 2, 3, 4]
-    )
-    amp_key_l = amp_key.lower()
-    is_bass   = "bass" in amp_key_l or "bt" in amp_key_l
-
-    # Pick default by instrument/character
-    defaults = {
-        "bass":       "BassWR",
-        "distortion": "CaliDist",
-        "clean_verb": "JzUSCleanSpring",
-        "clean":      "USClean",
-        "acoustic":   "AcStrum",
-    }
-
-    if is_bass:
-        fallback_key = "bass"
-    elif has_dist:
-        fallback_key = "distortion"
-    elif has_verb:
-        fallback_key = "clean_verb"
-    else:
-        fallback_key = "clean"
-
-    tone_key = defaults[fallback_key]
-    if tone_key in table:
-        e = table[tone_key]
-        return e["pc"], e["preset_name"], f"descriptor_{fallback_key}", whammy_cc
-
-    # 4. Last resort — PC 0 (most used preset)
-    if table:
-        first = next(iter(table.values()))
-        return first["pc"], first["preset_name"], "default", whammy_cc
-
-    return None
-
-
-# ── This is added to setup() ───────────────────────────────────────────────
-def _setup_cdlc_routes(app, context):
-    """Register CDLC tone matching endpoints. Called from setup()."""
-
-    @app.get("/api/plugins/at5_tone/match-cdlc-tones/{filename:path}")
-    def match_cdlc_tones(filename: str, skip_scrape: bool = False):
-        """For a CDLC song file, read its tone GearLists and find
-        the best AT5 PC match for each tone key."""
-        table = _get_table()
-        if not table:
-            return {"matches": {}, "error": "PC table not ready"}
-
-        # Load tone_data (amp keys) from our scrape for matching
-        # skip_scrape=True skips this expensive scan (used by Tone Browser)
-        td = {}
-        if _songs_path and not skip_scrape:
-            sp = Path(_songs_path)
-            for tf in list(sp.rglob("tone_*.json"))[:5000]:  # sample
-                try:
-                    d = json.loads(tf.read_text(encoding="utf-8", errors="replace"))
-                    key = d.get("toneData", {}).get("Key", "")
-                    gear = d.get("toneData", {}).get("GearList", {})
-                    if key and key not in td:
-                        td[key] = {
-                            "amp": gear.get("Amp", {}).get("Key", ""),
-                            "chain": _chain(gear),
-                        }
-                except Exception:
-                    pass
-
-        # Find the CDLC song file
-        dlc_dir = context.get("get_dlc_dir", lambda: None)()
-        if not dlc_dir:
-            return {"matches": {}, "error": "DLC folder not configured"}
-
-        import urllib.parse
-        decoded = urllib.parse.unquote(filename)
-        # Try the path as-is, then with common prefix variations
-        song_path = None
-        candidates = [
-            Path(dlc_dir) / decoded,
-            Path(dlc_dir) / decoded.lstrip('/'),
-        ]
-        # Also try stripping leading path components (Songs/, CDLC/ etc)
-        parts = decoded.replace('\\', '/').split('/')
-        for i in range(len(parts)):
-            candidates.append(Path(dlc_dir) / '/'.join(parts[i:]))
-
-        for c in candidates:
-            if c.resolve().exists():
-                song_path = c.resolve()
-                break
-
-        if not song_path:
-            return {"matches": {}, "error": f"File not found: {decoded} (tried {len(candidates)} paths)"}
-
-        # Read tone data from song manifests
-        try:
-            files = _read_song_json_files(song_path)
-        except Exception as e:
-            return {"matches": {}, "error": str(e)}
-
-        matches = {}
-        # Track which arrangements each tone key appears in
-        tone_arrangements = {}
-
-        for path, data in sorted(files.items()):
-            if not path.endswith(".json"):
-                continue
-            try:
-                j = json.loads(data)
-            except Exception:
-                continue
-            for k, v in j.get("Entries", {}).items():
-                attrs = v.get("Attributes", {})
-                arr = attrs.get("ArrangementName", "")
-                if arr in ("Vocals", "ShowLights", "JVocals"):
-                    continue
-                for tone in attrs.get("Tones", []):
-                    tone_key = tone.get("Key", "")
-                    if not tone_key:
-                        continue
-                    # Track arrangement membership
-                    if tone_key not in tone_arrangements:
-                        tone_arrangements[tone_key] = []
-                    if arr and arr not in tone_arrangements[tone_key]:
-                        tone_arrangements[tone_key].append(arr)
-                    if tone_key in matches:
-                        continue
-                    # Already in PC table — exact match
-                    if tone_key in table:
-                        e = table[tone_key]
-                        matches[tone_key] = {
-                            "pc":         e["pc"],
-                            "preset":     e["preset_name"],
-                            "match_type": "exact",
-                        }
-                        continue
-                    # Try GearList matching
-                    gear = tone.get("GearList", {})
-                    result = _match_cdlc_tone(gear, table, td)
-                    if result:
-                        pc, preset, match_type, cc_adj = result
-                        matches[tone_key] = {
-                            "pc":             pc,
-                            "preset":         preset,
-                            "match_type":     match_type,
-                            "cc_adjustments": cc_adj,
-                        }
-
-        # Add arrangement info to each match
-        for tone_key in matches:
-            matches[tone_key]["arrangements"] = tone_arrangements.get(tone_key, [])
-
-        return {"matches": matches, "total": len(matches)}
-
-
-def _detect_at5_presets_path() -> str | None:
-    """Try multiple methods to find AT5 Presets folder."""
-    import winreg
-
-    # 1. Read from AT5 settings.properties — most reliable, contains actual path
-    appdata = Path(os.environ.get("APPDATA", ""))
-    settings_path = appdata / "IK Multimedia" / "AmpliTube 5" / "settings.properties"
-    if settings_path.exists():
-        import xml.etree.ElementTree as ET
-        try:
-            text = settings_path.read_text(encoding="utf-8", errors="replace")
-            root = ET.fromstring(text)
-            for val in root.findall(".//VALUE[@name='recentDocuments']"):
-                v = val.get("val", "")
-                for part in v.split("&#10;"):
-                    p = Path(part.strip()).parent
-                    while p != p.parent:
-                        if (p / "Presets").exists():
-                            return str(p / "Presets")
-                        p = p.parent
-        except Exception:
-            pass
-
-    # 2. Try registry
-    try:
-        for hive, key_path in [
-            (winreg.HKEY_CURRENT_USER,  r"Software\IK Multimedia\AmpliTube 5"),
-            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\IK Multimedia\AmpliTube 5"),
-            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\IK Multimedia\AmpliTube 5"),
-        ]:
-            try:
-                with winreg.OpenKey(hive, key_path) as k:
-                    for value_name in ("UserDataPath", "DocumentsPath", "InstallPath", "DataPath"):
-                        try:
-                            val, _ = winreg.QueryValueEx(k, value_name)
-                            p = Path(val) / "Presets"
-                            if p.exists():
-                                return str(p)
-                        except FileNotFoundError:
-                            continue
-            except FileNotFoundError:
-                continue
-    except Exception:
-        pass
-
-    # 3. Known path candidates
-    for candidate in [
-        Path.home() / "OneDrive" / "Documents" / "IK Multimedia" / "AmpliTube 5" / "Presets",
-        Path.home() / "Documents"              / "IK Multimedia" / "AmpliTube 5" / "Presets",
-        Path.home() / "OneDrive" / "Documenten"/ "IK Multimedia" / "AmpliTube 5" / "Presets",
-        Path.home() / "OneDrive" / "Documentos"/ "IK Multimedia" / "AmpliTube 5" / "Presets",
-    ]:
-        if candidate.exists():
-            return str(candidate)
-
-    return None
-
-
     # ── Setup / first-run helpers ─────────────────────────────────────────
 
     @app.get("/api/plugins/at5_tone/setup/status")
@@ -1756,4 +1507,282 @@ function clearLog() {
         if len(_bridge_cmd_queue) > 32:
             _bridge_cmd_queue.pop(0)
         return {"ok": True, "seq": _bridge_cmd_seq}
+
+
+# ── CDLC tone matching ─────────────────────────────────────────────────────
+
+def _match_cdlc_tone(gear, table, tone_data):
+    """Find best PC match for a CDLC tone's GearList.
+    Returns (pc, preset_name, match_type, cc_adjustments) or None.
+    cc_adjustments includes whammy/wah CC if a wah pedal is detected.
+    """
+    amp_key = gear.get("Amp", {}).get("Key", "")
+    whammy_cc = _extract_whammy_cc(gear)   # [] or [{cc, value, knob}]
+    
+    # Build amp-key -> best PC lookup from our table
+    amp_to_pc = {}
+    for key, entry in table.items():
+        td = tone_data.get(key, {})
+        a = td.get("amp", "")
+        if a and a not in amp_to_pc:
+            amp_to_pc[a] = entry
+
+    # 1. Same amp key
+    if amp_key and amp_key in amp_to_pc:
+        e = amp_to_pc[amp_key]
+        return e["pc"], e["preset_name"], "amp_match", whammy_cc
+
+    # 2. Same amp family (e.g. Amp_CA100 -> Amp_CA38, Amp_CA85)
+    if amp_key:
+        # Extract family prefix: Amp_CA100 -> Amp_CA
+        parts = amp_key.split("_")
+        if len(parts) >= 2:
+            # Try progressively shorter prefixes
+            family = "_".join(parts[:2])  # e.g. Amp_CA
+            family_prefix = ''.join(c for c in family if not c.isdigit())  # Amp_CA
+            for a, e in amp_to_pc.items():
+                a_prefix = ''.join(c for c in a if not c.isdigit())
+                if a_prefix == family_prefix:
+                    return e["pc"], e["preset_name"], "amp_family", whammy_cc
+
+    # 3. Tone descriptor — classify by effects present
+    has_dist  = bool(gear.get("PrePedal1") or gear.get("PrePedal2"))
+    has_verb  = any(
+        "verb" in str(gear.get(f"Rack{i}", {}).get("Key", "")).lower() or
+        "verb" in str(gear.get(f"PostPedal{i}", {}).get("Key", "")).lower()
+        for i in [1, 2, 3, 4]
+    )
+    amp_key_l = amp_key.lower()
+    is_bass   = "bass" in amp_key_l or "bt" in amp_key_l
+
+    # Pick default by instrument/character
+    defaults = {
+        "bass":       "BassWR",
+        "distortion": "CaliDist",
+        "clean_verb": "JzUSCleanSpring",
+        "clean":      "USClean",
+        "acoustic":   "AcStrum",
+    }
+
+    if is_bass:
+        fallback_key = "bass"
+    elif has_dist:
+        fallback_key = "distortion"
+    elif has_verb:
+        fallback_key = "clean_verb"
+    else:
+        fallback_key = "clean"
+
+    tone_key = defaults[fallback_key]
+    if tone_key in table:
+        e = table[tone_key]
+        return e["pc"], e["preset_name"], f"descriptor_{fallback_key}", whammy_cc
+
+    # 4. Last resort — PC 0 (most used preset)
+    if table:
+        first = next(iter(table.values()))
+        return first["pc"], first["preset_name"], "default", whammy_cc
+
+    return None
+
+
+# ── This is added to setup() ───────────────────────────────────────────────
+def _setup_cdlc_routes(app, context):
+    """Register CDLC tone matching endpoints. Called from setup()."""
+
+    @app.get("/api/plugins/at5_tone/match-cdlc-tones/{filename:path}")
+    def match_cdlc_tones(filename: str, skip_scrape: bool = False):
+        """For a CDLC song file, read its tone GearLists and find
+        the best AT5 PC match for each tone key."""
+        table = _get_table()
+        if _building:
+            return {"matches": {}, "error": "PC table not ready"}
+
+        # Load tone_data (amp keys) from our scrape for matching
+        # skip_scrape=True skips this expensive scan (used by Tone Browser)
+        td = {}
+        if _songs_path and not skip_scrape:
+            sp = Path(_songs_path)
+            for tf in list(sp.rglob("tone_*.json"))[:5000]:  # sample
+                try:
+                    d = json.loads(tf.read_text(encoding="utf-8", errors="replace"))
+                    key = d.get("toneData", {}).get("Key", "")
+                    gear = d.get("toneData", {}).get("GearList", {})
+                    if key and key not in td:
+                        td[key] = {
+                            "amp": gear.get("Amp", {}).get("Key", ""),
+                            "chain": _chain(gear),
+                        }
+                except Exception:
+                    pass
+
+        # Find the CDLC song file
+        dlc_dir = context.get("get_dlc_dir", lambda: None)()
+        if not dlc_dir:
+            return {"matches": {}, "error": "DLC folder not configured"}
+
+        import urllib.parse
+        decoded = urllib.parse.unquote(filename)
+        # Try the path as-is, then with common prefix variations
+        song_path = None
+        candidates = [
+            Path(dlc_dir) / decoded,
+            Path(dlc_dir) / decoded.lstrip('/'),
+        ]
+        # Also try stripping leading path components (Songs/, CDLC/ etc)
+        parts = decoded.replace('\\', '/').split('/')
+        for i in range(len(parts)):
+            candidates.append(Path(dlc_dir) / '/'.join(parts[i:]))
+
+        for c in candidates:
+            if c.resolve().exists():
+                song_path = c.resolve()
+                break
+
+        if not song_path:
+            return {"matches": {}, "error": f"File not found: {decoded} (tried {len(candidates)} paths)"}
+
+        # Read tone data from song manifests
+        try:
+            files = _read_song_json_files(song_path)
+        except Exception as e:
+            return {"matches": {}, "error": str(e)}
+
+        matches = {}
+        # Track which arrangements each tone key appears in
+        tone_arrangements = {}
+
+        def _record_tone(tone_key, gear, arr_name):
+            if not tone_key:
+                return
+            if tone_key not in tone_arrangements:
+                tone_arrangements[tone_key] = []
+            if arr_name and arr_name not in tone_arrangements[tone_key]:
+                tone_arrangements[tone_key].append(arr_name)
+            if tone_key in matches:
+                return
+            # Already in PC table — exact match
+            if tone_key in table:
+                e = table[tone_key]
+                matches[tone_key] = {
+                    "pc":         e["pc"],
+                    "preset":     e["preset_name"],
+                    "match_type": "exact",
+                }
+                return
+            # Try GearList matching
+            result = _match_cdlc_tone(gear, table, td)
+            if result:
+                pc, preset, match_type, cc_adj = result
+                matches[tone_key] = {
+                    "pc":             pc,
+                    "preset":         preset,
+                    "match_type":     match_type,
+                    "cc_adjustments": cc_adj,
+                }
+
+        for path, data in sorted(files.items()):
+            if not path.endswith(".json"):
+                continue
+            try:
+                j = json.loads(data)
+            except Exception:
+                continue
+
+            # feedpak spec (arrangements/<id>.json, §6.9): tones.definitions[]
+            # carries {name, id, gear}. Some converters instead drop the raw
+            # RS2014 tone object in wholesale (top-level Key/GearList) — accept
+            # either. NOTE: rig-aware matching via rigs.json (base_rig /
+            # changes[].rig, §7.9) is intentionally NOT implemented — AT5 is
+            # treated as a legacy-conversion target for CDLC-derived GearList
+            # data, not a rig realization engine; skip straight to definitions.
+            definitions = j.get("tones", {}).get("definitions", [])
+            if definitions:
+                arr_name = j.get("name", "")
+                for defn in definitions:
+                    try:
+                        tone_key = defn.get("id") or defn.get("Key") or defn.get("name", "")
+                        gear = defn.get("gear") or defn.get("GearList", {})
+                        _record_tone(tone_key, gear, arr_name)
+                    except Exception:
+                        continue
+                continue
+
+            # Legacy CDLC manifest shape: {"Entries": {...: {"Attributes": {...}}}}
+            for k, v in j.get("Entries", {}).items():
+                try:
+                    attrs = v.get("Attributes", {})
+                    arr = attrs.get("ArrangementName", "")
+                    if arr in ("Vocals", "ShowLights", "JVocals"):
+                        continue
+                    for tone in attrs.get("Tones", []):
+                        tone_key = tone.get("Key", "")
+                        gear = tone.get("GearList", {})
+                        _record_tone(tone_key, gear, arr)
+                except Exception:
+                    continue
+
+        # Add arrangement info to each match
+        for tone_key in matches:
+            matches[tone_key]["arrangements"] = tone_arrangements.get(tone_key, [])
+
+        return {"matches": matches, "total": len(matches)}
+
+
+def _detect_at5_presets_path() -> str | None:
+    """Try multiple methods to find AT5 Presets folder."""
+    import winreg
+
+    # 1. Read from AT5 settings.properties — most reliable, contains actual path
+    appdata = Path(os.environ.get("APPDATA", ""))
+    settings_path = appdata / "IK Multimedia" / "AmpliTube 5" / "settings.properties"
+    if settings_path.exists():
+        import xml.etree.ElementTree as ET
+        try:
+            text = settings_path.read_text(encoding="utf-8", errors="replace")
+            root = ET.fromstring(text)
+            for val in root.findall(".//VALUE[@name='recentDocuments']"):
+                v = val.get("val", "")
+                for part in v.split("&#10;"):
+                    p = Path(part.strip()).parent
+                    while p != p.parent:
+                        if (p / "Presets").exists():
+                            return str(p / "Presets")
+                        p = p.parent
+        except Exception:
+            pass
+
+    # 2. Try registry
+    try:
+        for hive, key_path in [
+            (winreg.HKEY_CURRENT_USER,  r"Software\IK Multimedia\AmpliTube 5"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\IK Multimedia\AmpliTube 5"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\IK Multimedia\AmpliTube 5"),
+        ]:
+            try:
+                with winreg.OpenKey(hive, key_path) as k:
+                    for value_name in ("UserDataPath", "DocumentsPath", "InstallPath", "DataPath"):
+                        try:
+                            val, _ = winreg.QueryValueEx(k, value_name)
+                            p = Path(val) / "Presets"
+                            if p.exists():
+                                return str(p)
+                        except FileNotFoundError:
+                            continue
+            except FileNotFoundError:
+                continue
+    except Exception:
+        pass
+
+    # 3. Known path candidates
+    for candidate in [
+        Path.home() / "OneDrive" / "Documents" / "IK Multimedia" / "AmpliTube 5" / "Presets",
+        Path.home() / "Documents"              / "IK Multimedia" / "AmpliTube 5" / "Presets",
+        Path.home() / "OneDrive" / "Documenten"/ "IK Multimedia" / "AmpliTube 5" / "Presets",
+        Path.home() / "OneDrive" / "Documentos"/ "IK Multimedia" / "AmpliTube 5" / "Presets",
+    ]:
+        if candidate.exists():
+            return str(candidate)
+
+    return None
 
