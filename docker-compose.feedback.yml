@@ -1,0 +1,23 @@
+# Compose overlay that mounts this plugin into a running feedBack container.
+# Same pattern as feedBack-plugin-audio-sync's / feedback-plugin-tone3000-
+# match's own docker-compose.feedback.yml files — FEEDBACK_PLUGINS_DIR=
+# /opt/user-plugins is already set by whichever of those is included in the
+# same `-f` chain, so this file only needs to add this plugin's own bind
+# mount, under its own env var name (AT5_TONE_PLUGIN_DIR) so multiple
+# user-plugin overlays can be combined in one
+# `docker compose -f ... -f ... up -d` without clobbering each other's
+# mount source.
+#
+#   AT5_TONE_PLUGIN_DIR=$(pwd) docker compose \
+#       -f /path/to/feedBack/docker-compose.yml \
+#       -f /path/to/feedBack-plugin-audio-sync/docker-compose.feedback.yml \
+#       -f ./docker-compose.feedback.yml \
+#       up -d
+#
+# routes.py changes need a container restart; screen.js/screen.html/
+# settings.html edits are visible on the next page load.
+
+services:
+  web:
+    volumes:
+      - ${AT5_TONE_PLUGIN_DIR:?set AT5_TONE_PLUGIN_DIR to this plugin repo root}:/opt/user-plugins/at5_tone:ro
