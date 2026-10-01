@@ -80,9 +80,10 @@ def generate_pc_map(presets_dir, folder, output_path, max_presets=848):
     presets = [p for p in all_presets if LIVE_SLOT_PREFIX not in p.stem]
     live_files = [p for p in all_presets if LIVE_SLOT_PREFIX in p.stem]
 
-    if not presets:
+    if not presets and not live_files:
         print(f"ERROR: No .at5p files found in {target_dir}")
         sys.exit(1)
+    # Live slots alone are a complete setup: every song is converted on demand.
 
     print(f"Found {len(presets)} presets in {target_dir} (+ {len(live_files)} live slot files)")
 
@@ -180,10 +181,11 @@ def main():
     print(f"Output file:    {output_path}")
     print()
 
-    # Backup existing file if present
+    # Backup existing file if present — timestamped, so re-running never
+    # overwrites the backup of the user's original map
     if output_path.exists():
-        backup = output_path.with_suffix(".ik.bak")
-        import shutil
+        import shutil, time
+        backup = output_path.with_name(f"{output_path.stem}.{time.strftime('%Y%m%d-%H%M%S')}.ik.bak")
         shutil.copy2(output_path, backup)
         print(f"Backed up existing file to: {backup}")
 

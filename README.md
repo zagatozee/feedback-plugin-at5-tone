@@ -1,66 +1,50 @@
 # AT5 Tone Switcher — feedBack Plugin
-**v0.6.2**
+**v0.7.0** · requires feedBack 0.3.1-alpha.4 or newer
 
 Automatically switches AmpliTube 5 presets in sync with song playback in feedBack. When you load a song, the plugin extracts the guitar tone data, converts it to AT5 presets, and fires MIDI Program Change messages at the right moments — no manual switching needed.
+
+**feedBack Desktop is the primary target.** Load the AmpliTube 5 VST3 into Desktop's Signal Chain and the plugin drives it directly — no MIDI cable, virtual port, bridge script or symlink. Standalone AT5 (via loopMIDI) and Docker/browser setups (via the MIDI bridge) still work as secondary paths.
 
 ---
 
 ## Installation
 
-### Option A — Plugin Manager (recommended)
+Clone (or copy) the repo into feedBack's plugins folder as `at5_tone`, then restart feedBack:
 
-1. In feedBack, open **Plugins** in the nav bar
-2. Click **Add from GitHub**
-3. Enter: `zagatozee/feedback-plugin-at5-tone`
-4. Click Install
-
-### Option B — Manual
-
-Download the zip, extract the `at5_tone` folder, and copy it to:
-
-**Desktop app:**
+**Desktop app (Windows):**
 ```
-C:\Users\<username>\AppData\Roaming\fee[dB]ack\plugins\at5_tone\
+git clone <repo-url> "%APPDATA%\feedback-desktop\plugins\at5_tone"
 ```
 
-**Docker:**
+**Docker / self-hosted:** clone anywhere and mount it with the included overlay:
 ```
-<feedback_root>\plugins\at5_tone\
+AT5_TONE_PLUGIN_DIR=$(pwd) docker compose -f /path/to/feedBack/docker-compose.yml -f ./docker-compose.feedback.yml up -d
 ```
-Then restart the container: `docker restart feedback-web-1`
+
+> The Desktop Plugin Manager can also install from a git URL, but a private repo needs git credentials available to it.
 
 ---
 
 ## Setup — Desktop App
 
-The plugin's Status tab will guide you through setup with buttons. Here's what happens:
+Open **AT5** in the nav. The Status tab guides you through setup:
 
-### Step 1 — Link Presets folder
-Click **Create Symlink** in the Status tab. This links feedBack and AT5 to the same Presets folder so converted presets are immediately visible to AT5.
+### Step 1 — AmpliTube 5 folder
+The plugin finds `Documents\IK Multimedia\AmpliTube 5` on its own (OneDrive-redirected and relocated Documents folders included) and shows it in the **AmpliTube 5 setup** card. If it can't, paste the folder into the box and click **Use folder** — the choice is saved. Live slot files (`Presets\Converted\AT5_LIVE_00–07.at5p`) are created there automatically.
 
-> If the button fails, run feedBack Desktop as administrator (right-click → Run as administrator) and try again. The error message will also show the exact PowerShell command to run manually if needed.
+### Step 2 — Register the live slots
+Click **Run Setup**. This registers the 8 live slots as PC 121–128 in AT5's Program Change list (`ProgramChangePresetList.ik`; any existing list is backed up with a timestamp first). Restart AmpliTube 5 — or remove and re-add it in the Signal Chain — afterwards.
 
-### Step 2 — Populate live slots
-Click **Run Setup**. This creates 8 preset slots (AT5_LIVE_00–07) and registers them in AT5's Program Change list. Restart AmpliTube 5 after this step.
+### Step 3 — Load AmpliTube 5
+**Recommended:** on feedBack's **Audio** screen, add the **AmpliTube 5** VST3 to the Signal Chain. In AT5's own settings enable Program Change (Preset Control). The Status tab shows **AmpliTube 5 ready · Desktop signal chain** and the MIDI output picker's **Auto** choice uses it.
 
-### Step 3 — Configure AT5
-In AmpliTube 5:
-- **Options → Audio/MIDI → MIDI Input:** set to your audio interface or loopMIDI port
-- **Options → Control → Program Change:** enable Preset Control, Receive Channel: All
-- Restart AT5
+**Standalone AT5 instead:** create a [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) port, set it as AT5's MIDI input (Options → Audio/MIDI), enable Program Change (Options → Control), and pick the port in the Status tab's **MIDI output** dropdown.
 
-### Step 4 — Select MIDI output
-In the AT5 plugin Status tab, select your MIDI output from the dropdown:
-
-| Your setup | Select |
+| Your setup | MIDI output |
 |-----------|--------|
-| AT5 loaded as VST in feedBack Desktop chain | Internal VST — no extra software needed |
-| AT5 standalone + loopMIDI | Your loopMIDI port (e.g. "AT5 Bridge") |
-| AT5 standalone + audio interface | Your interface (e.g. "AXE IO") — requires MIDI cable looped OUT→IN |
-
-> **Simplest setup:** load AT5 as a VST inside feedBack Desktop's audio chain. No loopMIDI, no cable, no bridge script needed.
-
-> **loopMIDI download:** https://www.tobias-erichsen.de/software/loopmidi.html — free, create one virtual port, leave it running in the system tray.
+| AT5 VST3 in feedBack Desktop's Signal Chain | **Auto** or "AmpliTube 5 in Desktop signal chain" — nothing else needed |
+| AT5 standalone + loopMIDI | Your loopMIDI port |
+| AT5 standalone + audio interface | Your interface — requires a MIDI cable looped OUT→IN |
 
 ---
 
@@ -78,15 +62,15 @@ Add to your `docker-compose.yml` under `volumes:`:
 
 Restart the container after changing docker-compose.yml.
 
-### Step 2 — Populate live slots
-Run once from a terminal on the Windows host:
+### Step 2 — Register the live slots
+Click **Run Setup** in the Status tab (it writes through the `/at5docs` mount), or run once on the Windows host:
 ```
-python plugins\at5_tone\generate_at5_pc_map.py
+python generate_at5_pc_map.py --presets-dir "C:/Users/<username>/Documents/IK Multimedia/AmpliTube 5/Presets"
 ```
 Restart AmpliTube 5 after running.
 
 ### Step 3 — Configure AT5
-Same as Desktop Step 3 above.
+Same as the standalone AT5 instructions in Desktop Step 3 above.
 
 ### Step 4 — AT5 MIDI Bridge window
 Docker can't access Windows MIDI directly. On your first visit to the plugin's Status tab, an orange banner will appear — click **Open Bridge ↗** to open the AT5 MIDI Bridge window. Leave it open in the background. It handles MIDI directly from your host browser with no extra software needed.
@@ -113,6 +97,8 @@ The bridge window shows a live log of every MIDI command sent, with **📋 Copy 
 | `cdlc_to_at5.py` | Tone converter |
 | `at5_midi_bridge.py` | MIDI bridge script (Docker fallback) |
 | `generate_at5_pc_map.py` | One-time PC map setup |
+| `docker-compose.feedback.yml` | Compose overlay that mounts the plugin into a feedBack container |
+| `tests/` | pytest suite (`python -m pytest tests`) |
 | `gear_mapping_reference.md` | RS → AT5 gear mapping tables |
 
 ---
@@ -169,20 +155,19 @@ Work through these in order on a fresh install:
 
 ### Desktop app
 
-- [ ] Plugin appears in Plugins menu after install
-- [ ] Status tab shows setup panel — "Presets folder not linked"
-- [ ] Create Symlink button succeeds (run as administrator if it fails)
-- [ ] Run Setup button completes — reports 8 live slots created
-- [ ] Restart AT5 — presets appear in Program Change list (PC 121–128)
-- [ ] AT5 MIDI Input set to your port, Program Change enabled
-- [ ] MIDI output dropdown shows your port — hint text shown below it
-- [ ] Test button fires PC 0 — AT5 switches to first preset
-- [ ] Load a CDLC song — Live Slots section populates within ~1 second
-- [ ] Play the song — AT5 switches presets at tone change events
+- [ ] Plugin appears in the Plugins page / nav after install
+- [ ] Status tab → AmpliTube 5 setup card shows the detected AT5 folder (or accepts one via **Use folder**)
+- [ ] Run Setup completes — "8 live slots ready (PC 121–128)"
+- [ ] Restart AT5 — live slots appear in its Program Change list
+- [ ] AT5 VST3 added to the Signal Chain — Status shows "AmpliTube 5 ready · Desktop signal chain"
+- [ ] Test button fires PC 0 — AT5 switches to its first mapped preset
+- [ ] Load a song with tones — the AT5 badge in the player's Plugins rail shows the slot (e.g. "AT5 #121")
+- [ ] Play the song — AT5 switches presets at tone change events; seeking back re-sends the earlier tone
 - [ ] Tone Browser — search returns results, ▶ button auditions correct preset
 - [ ] Noise gate — enable in Settings, reload song, open .at5p in text editor,
       confirm GUID `0455f997` appears at StompA1 slot 0
 - [ ] Save-back — edit a tone in AT5, click 💾, reload song, confirm edits persist
+- [ ] Restart feedBack — tier / noise gate / AT5 folder settings are kept
 
 ### Docker
 
@@ -198,7 +183,7 @@ Work through these in order on a fresh install:
 
 ### Both
 
-- [ ] Diag button in Status tab shows correct _at5MidiOutput name and port ID
+- [ ] Diag button shows the active route, last send result, Web MIDI ports and (Desktop) the Signal Chain
 - [ ] Settings page (feedBack nav → Settings) shows AT5 section with tier
       selector, noise gate checkbox, MIDI offset slider
 - [ ] Switching tier clears live slots — next song load re-converts
@@ -210,29 +195,27 @@ Work through these in order on a fresh install:
 
 **Docker bridge window latency** — 100ms polling may add jitter on top of the prefire offset. If tone switches feel late, increase the MIDI Trigger Offset slider in Settings. A WebSocket upgrade is planned.
 
-**AT5 as VST** — MIDI signalling confirmed working via `sendMidiToSlot`. Guitar audio routing through feedBack Desktop's chain is not yet fully validated. Use standalone AT5 for now.
+**AT5 as VST** — Program Change / CC go straight to the AmpliTube slot via Desktop's `sendMidiToSlot` (versions before 0.7.0 sent malformed messages here). Only Signal Chain slots whose name or path contains "AmpliTube" receive them.
 
 **Browser tab suspension** — if the bridge window is backgrounded for a long time in a non-Electron browser, Chrome may throttle polling. Keep the window visible or use the Python bridge as fallback.
 
-**Non-standard AT5 install paths** — if AT5 documents are not in Documents or OneDrive/Documents, path detection may fail. A text input field will appear in the setup panel — paste your AT5 Presets folder path there.
-
-**Symlink requires admin** — Windows requires elevated privileges to create symbolic links. If the button fails, run feedBack Desktop as administrator or use the manual PowerShell command shown in the error message.
+**Non-standard AT5 install paths** — if detection fails, paste the AT5 documents folder (or its Presets folder) into the setup card and click **Use folder**. It can also be forced with the `AT5_DOCS_DIR` environment variable.
 
 ---
 
 ## Troubleshooting
 
-**Setup panel shows "Presets folder not linked" after clicking Create Symlink**
-Run feedBack Desktop as administrator and try again.
+**Setup card says "AmpliTube 5 folder not found"**
+Paste the folder that contains AT5's `Presets` folder (usually `Documents\IK Multimedia\AmpliTube 5`) and click **Use folder**.
 
 **Live slots not populating**
-Make sure the Presets folder is linked first, then run Setup again.
+Make sure the AT5 folder is set first, then click Run Setup again.
 
 **AT5 crashes on startup**
 Delete `AT5_LIVE_*.at5p` from your AT5 Presets/Converted folder and let the plugin recreate them.
 
 **No tone switches firing**
-Check: AT5 MIDI Input is set correctly, Program Change is enabled in AT5 Control settings, correct MIDI output selected in plugin Status tab. Use the Diag button to inspect what _at5MidiOutput is set to.
+Check: AT5 MIDI Input is set correctly, Program Change is enabled in AT5 Control settings, correct MIDI output selected in plugin Status tab. Use the Diag button to see which route the plugin picked and whether the last send succeeded.
 
 **Tone Browser shows no results**
 The bundled MIDI plugin (`midi_amp`) is required and should always be present. If missing, reinstall feedBack.

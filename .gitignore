@@ -9,3 +9,6 @@ Thumbs.db
 .claude/
 session_handoff.md
 multiplayer-audio-spec.md
+
+# Test caches
+.pytest_cache/

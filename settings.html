@@ -100,7 +100,10 @@
                 if (radio) radio.checked = true;
                 var ngCb = document.getElementById('at5-noise-gate-checkbox');
                 if (ngCb) ngCb.checked = !!data.noise_gate;
-                var prefireMs = Math.round((data.prefire_ms || 0) * 1000);
+                // Prefire is a per-browser setting (seconds) owned by screen.js
+                var stored = null;
+                try { stored = localStorage.getItem('at5_prefire_ms'); } catch (e) {}
+                var prefireMs = Math.round((parseFloat(stored == null ? '0.2' : stored) || 0) * 1000);
                 var slider = document.getElementById('at5-prefire-slider');
                 var label  = document.getElementById('at5-prefire-label');
                 if (slider) slider.value = prefireMs;

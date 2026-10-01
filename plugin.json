@@ -1,18 +1,21 @@
 {
   "id": "at5_tone",
   "name": "AmpliTube 5 Tone Switcher",
-  "version": "0.6.2",
+  "version": "0.7.0",
+  "minHost": "0.3.1-alpha.4",
   "private": false,
-  "description": "Automatically switch AmpliTube 5 presets in sync with CDLC playback via MIDI Program Change.",
+  "description": "Automatically switch AmpliTube 5 presets in sync with song playback via MIDI Program Change, directly into the AT5 VST3 on feedBack Desktop.",
   "category": "audio",
   "nav": {
     "label": "AT5",
-    "screen": "at5-tone"
+    "screen": "plugin-at5_tone"
   },
   "screen": "screen.html",
   "script": "screen.js",
   "settings": {
-    "html": "settings.html"
+    "html": "settings.html",
+    "server_files": ["at5_tone_settings.json"],
+    "category": "audio"
   },
   "routes": "routes.py"
 }

@@ -1,6 +1,7 @@
-"""AmpliTube 5 Tone Switcher — routes.py v2
-- PC table built in background thread
-- Persisted to /at5docs/at5_pc_table_cache.json (survives restarts + rebuilds)
+"""AmpliTube 5 Tone Switcher — routes.py v3
+- AT5 documents folder resolved per host: user setting → AT5_DOCS_DIR env →
+  /at5docs (Docker mount) → auto-detect (Windows / feedBack Desktop)
+- PC table built in background thread, cached in the AT5 documents folder
 - Manual rebuild trigger via POST /api/plugins/at5_tone/pc_table/rebuild
 """
 
@@ -8,12 +9,36 @@ import csv
 import json
 import logging
 import os
+import platform
 import re
 import threading
 from pathlib import Path
 from fastapi import Request
+from fastapi.responses import JSONResponse
 
 log = logging.getLogger(__name__)
+
+SETTINGS_FILE = "at5_tone_settings.json"
+TIERS = ("cs", "se", "at5", "max")
+
+
+async def _read_body(request: Request):
+    """Parse a JSON object body. Returns (dict, None) or (None, 400 response).
+    An empty body reads as {} so bodiless POSTs from older clients keep working."""
+    raw = await request.body()
+    if not raw.strip():
+        return {}, None
+    try:
+        body = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None, JSONResponse({"status": "error", "ok": False, "message": "Body is not valid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return None, JSONResponse({"status": "error", "ok": False, "message": "Body must be a JSON object"}, status_code=400)
+    return body, None
+
+
+def _bad_request(message):
+    return JSONResponse({"status": "error", "ok": False, "message": message, "error": message}, status_code=400)
 
 # ── CC map: knob suffix -> MIDI CC number ──────────────────────────────────
 # Must match AT5 MIDI Learn assignments
@@ -49,6 +74,14 @@ _building  = False
 _csv_path  = None
 _songs_path = None
 _cache_path = None
+
+# Resolved AmpliTube 5 documents folder (the one holding Presets/, Presets.db,
+# ProgramChangePresetList.ik). See _resolve_at5_dir().
+_config_dir        = None   # context["config_dir"], set by setup()
+_at5_dir           = None
+_at5_dir_source    = None   # "setting" | "env" | "docker" | "detected"
+_at5_docs_override = ""     # user-chosen folder, persisted in SETTINGS_FILE
+_live_presets_dir  = None   # <_at5_dir>/Presets/Converted
 
 
 def _rs_to_cc(rs_value):
@@ -360,34 +393,125 @@ def _load_converter():
     )
 
 
-def _get_presets_dir(at5_dir):
-    """Return Path to the AT5 Converted presets folder, creating it if needed."""
-    # Check existing paths first
-    for p in [Path("/at5docs/Presets/Converted"), at5_dir / "Presets" / "Converted"]:
-        if p.exists():
-            return p
+def _load_settings():
+    """Restore persisted settings (tier, noise gate, AT5 folder override)."""
+    global _at5_tier, _at5_free_mode, _at5_noise_gate, _at5_docs_override
+    if not _config_dir:
+        return
+    path = Path(_config_dir) / SETTINGS_FILE
+    if not path.exists():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.warning("[AT5] Could not read %s: %s", path, e)
+        return
+    if not isinstance(data, dict):
+        return
+    if data.get("tier") in TIERS:
+        _at5_tier = data["tier"]
+        _at5_free_mode = (_at5_tier == "cs")
+    if isinstance(data.get("noise_gate"), bool):
+        _at5_noise_gate = data["noise_gate"]
+    if isinstance(data.get("at5_docs_path"), str):
+        _at5_docs_override = data["at5_docs_path"].strip()
 
-    # /at5docs is mounted but Presets/Converted doesn't exist yet — create it
-    at5docs = Path("/at5docs")
-    if at5docs.exists():
-        converted = at5docs / "Presets" / "Converted"
-        converted.mkdir(parents=True, exist_ok=True)
-        log.info(f"[AT5 Live] Created {converted}")
-        return converted
 
-    # at5_dir exists (from config) but no Converted folder — create it
-    if at5_dir.exists():
-        converted = at5_dir / "Presets" / "Converted"
-        converted.mkdir(parents=True, exist_ok=True)
-        log.info(f"[AT5 Live] Created {converted}")
-        return converted
+def _save_settings():
+    if not _config_dir:
+        return
+    path = Path(_config_dir) / SETTINGS_FILE
+    data = {"tier": _at5_tier, "noise_gate": _at5_noise_gate, "at5_docs_path": _at5_docs_override}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception as e:
+        log.warning("[AT5] Could not save %s: %s", path, e)
 
-    raise FileNotFoundError(
-        "Could not find or create AT5 Presets folder. "
-        "Add a volume mount to docker-compose.yml: "
-        '"C:/Users/<username>/Documents/IK Multimedia/AmpliTube 5:/at5docs" '
-        "(adjust path to match your system)"
-    )
+
+def _normalise_at5_dir(p: Path) -> Path:
+    """Accept the AT5 documents folder, its Presets/ folder, or Presets/Converted/."""
+    if p.name.lower() == "converted" and p.parent.name.lower() == "presets":
+        return p.parent.parent
+    if p.name.lower() == "presets":
+        return p.parent
+    return p
+
+
+def _resolve_at5_dir():
+    """Find the AmpliTube 5 documents folder. Returns (Path | None, source | None).
+
+    Order: explicit user setting → AT5_DOCS_DIR env var → /at5docs Docker
+    mount → auto-detection (Windows: AT5 settings, registry, Documents).
+    feedBack Desktop runs the backend natively, so detection finds the real
+    folder directly — no symlinks or mounts needed.
+    """
+    candidates = []
+    if _at5_docs_override:
+        candidates.append((_normalise_at5_dir(Path(_at5_docs_override)), "setting"))
+    env = os.environ.get("AT5_DOCS_DIR", "").strip()
+    if env:
+        candidates.append((_normalise_at5_dir(Path(env)), "env"))
+    candidates.append((Path("/at5docs"), "docker"))
+    for p, source in candidates:
+        if p.is_dir():
+            return p, source
+    detected = _detect_at5_presets_path()
+    if detected:
+        return Path(detected).parent, "detected"
+    return None, None
+
+
+def _apply_at5_dir():
+    """(Re)resolve the AT5 folder and everything that hangs off it."""
+    global _at5_dir, _at5_dir_source, _csv_path, _cache_path, _live_presets_dir, _pc_table
+    at5_dir, source = _resolve_at5_dir()
+    _at5_dir, _at5_dir_source = at5_dir, source
+
+    csv_p = at5_dir / "at5_pc_reference.csv" if at5_dir else None
+    new_csv = str(csv_p) if csv_p and csv_p.exists() else None
+    # The cache follows the CSV it was built from; without an AT5 folder it
+    # lives in the plugin's config dir so a rebuild never writes somewhere odd.
+    cache_dir = at5_dir if at5_dir else (Path(_config_dir) if _config_dir else None)
+    new_cache = str(cache_dir / "at5_pc_table_cache.json") if cache_dir else None
+    if (new_csv, new_cache) != (_csv_path, _cache_path):
+        with _lock:
+            if not _building:
+                _pc_table = None   # reload from the new location on next _get_table()
+    _csv_path, _cache_path = new_csv, new_cache
+
+    _live_presets_dir = None
+    if at5_dir:
+        try:
+            converted = at5_dir / "Presets" / "Converted"
+            converted.mkdir(parents=True, exist_ok=True)
+            _ensure_slot_files(converted)
+            _live_presets_dir = converted
+        except Exception as e:
+            log.warning("[AT5 Live] Could not prepare live slots in %s: %s", at5_dir, e)
+    _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0, "source": None})
+    log.info("[AT5] AT5 folder=%s (%s) csv=%s cache=%s live_slots=%s",
+             at5_dir, source, _csv_path, _cache_path, _live_presets_dir)
+
+
+def _resolve_song_path(dlc_dir, filename: str):
+    """Locate a library song by its library filename, staying inside dlc_dir.
+    Tolerates a leading path component the library doesn't use (e.g. Songs/)."""
+    if not dlc_dir or not filename:
+        return None
+    root = Path(dlc_dir).resolve()
+    parts = [p for p in filename.replace("\\", "/").split("/") if p]
+    for i in range(len(parts)):
+        cand = root.joinpath(*parts[i:]).resolve()
+        try:
+            cand.relative_to(root)
+        except ValueError:
+            continue   # escapes the library folder
+        if cand.exists():
+            return cand
+    return None
 
 
 def _ensure_slot_files(presets_dir):
@@ -437,6 +561,7 @@ def _write_null_preset(path, slot_index, mod=None):
         null6_attrs   = na6, null6_slots   = ns6,
         description   = DESC,
         song          = "",
+        di_before_amp = "0",
     )
     path.write_text(xml, encoding="utf-8")
 
@@ -713,19 +838,12 @@ def _copy_song_presets_to_slots(song_presets: dict, slot_map_order: list,
 # ── Plugin setup ───────────────────────────────────────────────────────────
 
 def setup(app, context):
-    global _csv_path, _songs_path, _cache_path, _load_sibling_fn, log
+    global _songs_path, _load_sibling_fn, _config_dir, log
     # Use feedBack's namespaced logger
     log = context.get("log", log)
     # Capture load_sibling for proper sibling module loading
     _load_sibling_fn = context.get("load_sibling")
-
-    at5_dir = context["config_dir"].parent   # IK Multimedia/AmpliTube 5
-
-    # Resolve paths — Docker mounts take priority
-    for csv_candidate in [Path("/at5docs/at5_pc_reference.csv"), at5_dir / "at5_pc_reference.csv"]:
-        if csv_candidate.exists():
-            _csv_path = str(csv_candidate)
-            break
+    _config_dir = Path(context["config_dir"])
 
     # Optional: mount /scrape in docker-compose.yml to enable PC table tone matching
     for songs_candidate in [Path("/scrape")]:
@@ -733,39 +851,26 @@ def setup(app, context):
             _songs_path = str(songs_candidate)
             break
 
-    # Cache lives in at5docs so it survives container rebuilds
-    for cache_dir in [Path("/at5docs"), at5_dir]:
-        if cache_dir.exists():
-            _cache_path = str(cache_dir / "at5_pc_table_cache.json")
-            break
-
-    log.info(f"[AT5] csv={_csv_path} songs={_songs_path} cache={_cache_path}")
+    _load_settings()
+    _apply_at5_dir()
 
     # Load from cache immediately (non-blocking)
     _get_table()
     _setup_cdlc_routes(app, context)
-
-    # ── Live convert setup ────────────────────────────────────────────────
-    try:
-        _live_presets_dir = _get_presets_dir(at5_dir)
-        _ensure_slot_files(_live_presets_dir)
-        log.info(f"[AT5 Live] Slots ready at {_live_presets_dir}, PC {LIVE_SLOT_START}–{LIVE_SLOT_START+LIVE_SLOT_COUNT-1}")
-    except Exception as e:
-        _live_presets_dir = None
-        log.warning(f"[AT5 Live] Setup failed (non-fatal): {e}")
 
     @app.post("/api/plugins/at5_tone/live_convert")
     async def live_convert(request: Request):
         """Convert a song's tones into live slots on demand.
         Body: { "filename": "ragekilling_p.feedpak" }
         """
+        body, err = await _read_body(request)
+        if err:
+            return err
         if _live_presets_dir is None:
-            return {"status": "error", "message": "Live slots not configured — check logs"}
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+            return {"status": "error", "message": "AmpliTube 5 folder not found — open the AT5 screen to set it up"}
         filename = body.get("filename", "")
+        if not isinstance(filename, str):
+            return _bad_request("filename must be a string")
         if not filename:
             return {"status": "error", "message": "filename required"}
 
@@ -777,16 +882,7 @@ def setup(app, context):
 
         # Locate the song file
         dlc_dir = context.get("get_dlc_dir", lambda: None)()
-        song_path = None
-        if dlc_dir:
-            parts = filename.replace('\\', '/').split('/')
-            candidates = [Path(dlc_dir) / filename]
-            for i in range(len(parts)):
-                candidates.append(Path(dlc_dir) / '/'.join(parts[i:]))
-            for c in candidates:
-                if c.resolve().exists():
-                    song_path = c.resolve()
-                    break
+        song_path = _resolve_song_path(dlc_dir, filename)
         if not song_path:
             return {"status": "error", "message": f"Song file not found: {filename}"}
 
@@ -871,17 +967,17 @@ def setup(app, context):
     @app.post("/api/plugins/at5_tone/settings")
     async def update_settings(request: Request):
         global _at5_tier, _at5_free_mode, _at5_noise_gate
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body, err = await _read_body(request)
+        if err:
+            return err
         if "tier" in body:
             new_tier = body["tier"]
-            if new_tier in ("cs", "se", "at5", "max"):
-                _at5_tier = new_tier
-                _at5_free_mode = (_at5_tier == "cs")
-                log.info(f"[AT5] tier set to {_at5_tier}")
-                _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
+            if new_tier not in TIERS:
+                return _bad_request(f"tier must be one of {', '.join(TIERS)}")
+            _at5_tier = new_tier
+            _at5_free_mode = (_at5_tier == "cs")
+            log.info(f"[AT5] tier set to {_at5_tier}")
+            _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
         elif "free_mode" in body:
             # Legacy boolean support
             _at5_tier = "cs" if bool(body["free_mode"]) else "max"
@@ -891,6 +987,7 @@ def setup(app, context):
         if "noise_gate" in body:
             _at5_noise_gate = bool(body["noise_gate"])
             log.info(f"[AT5] noise_gate set to {_at5_noise_gate}")
+        _save_settings()
         return {"status": "ok", "tier": _at5_tier, "free_mode": _at5_free_mode, "noise_gate": _at5_noise_gate}
 
     @app.get("/api/plugins/at5_tone/live_status")
@@ -915,12 +1012,13 @@ def setup(app, context):
         Body: { "tone_key": "RageKilling_lead" }   -- save one tone
               { "tone_key": "*" }                   -- save all current slots
         """
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body, err = await _read_body(request)
+        if err:
+            return err
+        if not isinstance(body.get("tone_key", "*"), str):
+            return _bad_request("tone_key must be a string")
 
-        if not _live_state.get("song"):
+        if not _live_state.get("song") or _live_presets_dir is None:
             return {"status": "error", "message": "No song loaded"}
 
         dlc_dir = context.get("get_dlc_dir", lambda: None)()
@@ -928,8 +1026,8 @@ def setup(app, context):
             return {"status": "error", "message": "DLC dir unavailable"}
 
         filename   = _live_state["song"]
-        song_path = (Path(dlc_dir) / filename).resolve()
-        if not song_path.exists():
+        song_path = _resolve_song_path(dlc_dir, filename)
+        if not song_path:
             return {"status": "error", "message": f"Song file not found: {filename}"}
 
         song_dir = _song_preset_dir(song_path)  # uses current free_mode
@@ -973,19 +1071,21 @@ def setup(app, context):
         Returns immediately with a job ID; conversion runs in background.
         Poll GET /api/plugins/at5_tone/prescan/status for progress.
         """
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body, err = await _read_body(request)
+        if err:
+            return err
+        filenames = body.get("filenames")
+        if filenames is not None and not (isinstance(filenames, list)
+                                          and all(isinstance(f, str) for f in filenames)):
+            return _bad_request("filenames must be a list of strings")
 
         dlc_dir = context.get("get_dlc_dir", lambda: None)()
         if not dlc_dir:
             return {"status": "error", "message": "DLC dir unavailable"}
 
         dlc_path = Path(dlc_dir)
-        filenames = body.get("filenames")
         if filenames:
-            songs = [dlc_path / f for f in filenames]
+            songs = [p for p in (_resolve_song_path(dlc_dir, f) for f in filenames) if p]
         else:
             songs = (list(dlc_path.rglob("*.feedpak"))
                      + list(dlc_path.rglob("*.sloppak")))
@@ -1024,9 +1124,12 @@ def setup(app, context):
                         slot_map = {}
                         for i, tk in enumerate(missing[:LIVE_SLOT_COUNT]):
                             td = tones[tk]
-                            results = mod._convert_tone_from_gearlist(
+                            mod._convert_tone_from_gearlist(
                                 tk, td.get("Name", tk), td["GearList"],
-                                song_path, tmp_path)
+                                song_path, tmp_path,
+                                free_mode=_at5_free_mode,
+                                tier=_at5_tier,
+                                noise_gate=_at5_noise_gate)
                             written = list(tmp_path.glob("*.at5p"))
                             if written:
                                 slot_map[tk] = LIVE_SLOT_START + i
@@ -1181,119 +1284,100 @@ def setup(app, context):
 
     # ── Setup / first-run helpers ─────────────────────────────────────────
 
+    def _host_mode():
+        if _at5_dir_source == "docker" or (_at5_dir is None and Path("/at5docs").exists()):
+            return "docker"
+        if os.environ.get("RESOURCESPATH"):   # set by feedBack Desktop for its Python backend
+            return "desktop"
+        return "native" if platform.system() == "Windows" else "docker"
+
+    def _setup_status_payload():
+        mode = _host_mode()
+        result = {
+            "platform":         platform.system(),
+            "mode":             mode,
+            "at5_dir":          str(_at5_dir) if _at5_dir else None,
+            "at5_dir_source":   _at5_dir_source,
+            "at5_docs_override": _at5_docs_override or None,
+            "presets_linked":   _live_presets_dir is not None,
+            "presets_path":     str(_live_presets_dir) if _live_presets_dir else None,
+            "live_slots_exist": False,
+            "live_slot_count":  0,
+            "pc_map_exists":    False,
+            "csv_exists":       bool(_csv_path),
+            "at5_docs_found":   _at5_dir is not None,
+        }
+        if _live_presets_dir is not None:
+            slots = list(_live_presets_dir.glob(f"{LIVE_SLOT_PREFIX}_*.at5p"))
+            result["live_slot_count"] = len(slots)
+            # Slot files are created by _apply_at5_dir(); what's left to do is
+            # registering them in AT5's Program Change map.
+            pc_map = _at5_dir / "ProgramChangePresetList.ik"
+            result["pc_map_exists"] = pc_map.exists() and LIVE_SLOT_PREFIX in pc_map.read_text(
+                encoding="utf-8", errors="replace")
+            result["live_slots_exist"] = len(slots) >= LIVE_SLOT_COUNT and result["pc_map_exists"]
+        if _at5_dir is None and mode != "docker":
+            result["detected_at5_presets"] = _detect_at5_presets_path()
+        return result
+
     @app.get("/api/plugins/at5_tone/setup/status")
     def _setup_status():
         """Check what's present/missing for first-run setup."""
-        import platform
-        result = {
-            "platform": platform.system(),
-            "presets_linked": False,
-            "presets_path": None,
-            "live_slots_exist": False,
-            "live_slot_count": 0,
-            "at5_docs_found": False,
-        }
+        return _setup_status_payload()
 
-        # Check AT5 docs / presets folder reachability
-        presets_candidates = [
-            (Path("/at5docs/Presets/Converted"),                                           "docker"),
-            (Path(__file__).parent.parent.parent / "Presets" / "Converted",               "desktop_symlink"),
-            (Path.home() / "AppData" / "Roaming" / "feedback-desktop" / "Presets" / "Converted", "desktop_symlink"),
-        ]
-        for p, mode in presets_candidates:
-            if p.exists():
-                result["presets_linked"] = True
-                result["presets_path"] = str(p)
-                result["at5_docs_found"] = True
-                result["mode"] = mode
-                slots = list(p.glob("AT5_LIVE_*.at5p"))
-                result["live_slots_exist"] = len(slots) >= 8
-                result["live_slot_count"] = len(slots)
-                break
-
-        # If nothing found, indicate which setup path applies
-        if not result["presets_linked"]:
-            result["mode"] = "docker" if Path("/at5docs").exists() else "desktop_symlink"
-            # Try to detect AT5 path anyway so UI can show it / suggest it
-            detected = _detect_at5_presets_path()
-            result["detected_at5_presets"] = detected
-
-        return result
-
-    @app.post("/api/plugins/at5_tone/setup/create-symlink")
-    async def _setup_create_symlink(request):
-        """Create symlink from feedBack Desktop Presets folder to AT5 Presets folder."""
-        import platform, subprocess, tempfile
-        if platform.system() != "Windows":
-            return {"ok": False, "error": "Symlink setup only needed on Windows Desktop"}
-
-        body = await request.json()
-        at5_presets = body.get("at5_presets_path", "")
-        feedback_presets = body.get("feedback_presets_path", "")
-
-        if not at5_presets or not feedback_presets:
-            at5_presets = _detect_at5_presets_path()
-            feedback_presets = str(Path.home() / "AppData" / "Roaming" / "feedback-desktop" / "Presets")
-
-        # Check target exists
-        if not Path(at5_presets).exists():
-            return {"ok": False, "error": f"AT5 Presets folder not found: {at5_presets}"}
-
-        # Remove existing folder if present (non-symlink)
-        sp = Path(feedback_presets)
-        if sp.exists() and not sp.is_symlink():
-            try:
-                import shutil
-                shutil.rmtree(str(sp))
-            except Exception as e:
-                return {"ok": False, "error": f"Could not remove existing Presets folder: {e}. Run feedBack Desktop as administrator."}
-
-        # Create symlink via PowerShell (handles elevation)
-        ps_cmd = (
-            f'New-Item -Path "{feedback_presets}" '
-            f'-ItemType SymbolicLink '
-            f'-Target "{at5_presets}" '
-            f'-Force'
-        )
-        try:
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_cmd],
-                capture_output=True, text=True, timeout=15
-            )
-            if result.returncode == 0 or Path(feedback_presets).is_symlink():
-                log.info(f"[AT5 Setup] Symlink created: {feedback_presets} → {at5_presets}")
-                return {"ok": True, "symlink": feedback_presets, "target": at5_presets}
-            else:
-                err = (result.stderr.strip() or result.stdout.strip() or "")
-                is_priv = "privilege" in err.lower() or "administrator" in err.lower() or "access" in err.lower()
-                if is_priv:
-                    return {
-                        "ok": False,
-                        "error": "Permission denied. Right-click feedBack Desktop and select 'Run as administrator', then try again.",
-                        "manual_cmd": f'New-Item -Path "{feedback_presets}" -ItemType SymbolicLink -Target "{at5_presets}" -Force',
-                    }
-                return {"ok": False, "error": err or "Unknown error creating symlink."}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+    @app.post("/api/plugins/at5_tone/setup/at5-path")
+    async def _setup_at5_path(request: Request):
+        """Point the plugin at the AmpliTube 5 documents folder.
+        Body: { "path": "C:/Users/me/Documents/IK Multimedia/AmpliTube 5" }
+        (the Presets/ folder inside it is accepted too). Empty path = auto-detect.
+        """
+        global _at5_docs_override
+        body, err = await _read_body(request)
+        if err:
+            return err
+        raw = body.get("path", "")
+        if not isinstance(raw, str):
+            return _bad_request("path must be a string")
+        raw = raw.strip().strip('"')
+        if raw:
+            p = _normalise_at5_dir(Path(raw).expanduser())
+            if not p.is_dir():
+                return {"ok": False, "error": f"Folder not found: {p}"}
+            if not (p / "Presets").is_dir():
+                return {"ok": False, "error": f"No Presets folder inside {p} — pick the 'AmpliTube 5' folder under Documents/IK Multimedia"}
+            _at5_docs_override = str(p)
+        else:
+            _at5_docs_override = ""
+        _save_settings()
+        _apply_at5_dir()
+        _get_table()
+        return {"ok": True, **_setup_status_payload()}
 
     @app.post("/api/plugins/at5_tone/setup/run-pc-map")
-    async def _setup_run_pc_map(request):
-        """Run generate_at5_pc_map.py to populate AT5 live slots."""
+    async def _setup_run_pc_map(request: Request):
+        """Run generate_at5_pc_map.py to register the live slots in AT5's PC map."""
         import subprocess, sys
+        if _at5_dir is None:
+            return {"ok": False, "error": "AmpliTube 5 folder not set"}
         script = Path(__file__).parent / "generate_at5_pc_map.py"
         if not script.exists():
             return {"ok": False, "error": "generate_at5_pc_map.py not found in plugin folder"}
         try:
             result = subprocess.run(
-                [sys.executable, str(script)],
-                capture_output=True, text=True, timeout=60
+                [sys.executable, str(script),
+                 "--presets-dir", str(_at5_dir / "Presets"),
+                 "--output", str(_at5_dir / "ProgramChangePresetList.ik")],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                # piped stdout on Windows defaults to the ANSI code page, which
+                # can't encode the script's ✓/→ and would fail the run
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
             ok = result.returncode == 0
             output = (result.stdout + result.stderr).strip()
             log.info(f"[AT5 Setup] pc_map result: {ok} — {output[:200]}")
-            return {"ok": ok, "output": output}
+            return {"ok": ok, "output": output, **({} if ok else {"error": output[-400:] or "PC map script failed"})}
         except subprocess.TimeoutExpired:
-            return {"ok": False, "error": "Timed out after 60s — check AT5 is installed"}
+            return {"ok": False, "error": "Timed out after 60s"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -1481,28 +1565,45 @@ function clearLog() {
         return {"commands": pending}
 
     @app.post("/api/plugins/at5_tone/bridge-window/ack")
-    async def _bridge_ack(request):
+    async def _bridge_ack(request: Request):
         """Remove acknowledged commands from the queue."""
-        body = await request.json()
+        body, err = await _read_body(request)
+        if err:
+            return err
         ack_seq = body.get("seq", 0)
+        if not isinstance(ack_seq, int) or isinstance(ack_seq, bool):
+            return _bad_request("seq must be an integer")
         _bridge_cmd_queue[:] = [c for c in _bridge_cmd_queue if c["seq"] > ack_seq]
         return {"ok": True}
 
     @app.post("/api/plugins/at5_tone/bridge-window/send")
-    async def _bridge_send(request):
+    async def _bridge_send(request: Request):
         """Receive MIDI command from screen.js and queue for bridge window."""
         global _bridge_cmd_seq
-        data = await request.json()
+        data, err = await _read_body(request)
+        if err:
+            return err
+        kind = data.get("type", "pc")
+        if kind not in ("pc", "cc"):
+            return _bad_request("type must be 'pc' or 'cc'")
+
+        def _midi_int(name, hi):
+            v = data.get(name, 0)
+            if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= hi:
+                raise ValueError(f"{name} must be an integer 0-{hi}")
+            return v
+
+        try:
+            if kind == "pc":
+                fields = dict(channel=_midi_int("channel", 15), program=_midi_int("program", 127),
+                              label=str(data.get("label", "")))
+            else:
+                fields = dict(channel=_midi_int("channel", 15), cc=_midi_int("cc", 127),
+                              value=_midi_int("value", 127))
+        except ValueError as e:
+            return _bad_request(str(e))
         _bridge_cmd_seq += 1
-        cmd = {"seq": _bridge_cmd_seq, "type": data.get("type", "pc")}
-        if cmd["type"] == "pc":
-            cmd.update(channel=int(data.get("channel", 0)),
-                       program=int(data.get("program", 0)),
-                       label=data.get("label", ""))
-        elif cmd["type"] == "cc":
-            cmd.update(channel=int(data.get("channel", 0)),
-                       cc=int(data.get("cc", 0)),
-                       value=int(data.get("value", 0)))
+        cmd = {"seq": _bridge_cmd_seq, "type": kind, **fields}
         _bridge_cmd_queue.append(cmd)
         if len(_bridge_cmd_queue) > 32:
             _bridge_cmd_queue.pop(0)
@@ -1623,24 +1724,10 @@ def _setup_cdlc_routes(app, context):
 
         import urllib.parse
         decoded = urllib.parse.unquote(filename)
-        # Try the path as-is, then with common prefix variations
-        song_path = None
-        candidates = [
-            Path(dlc_dir) / decoded,
-            Path(dlc_dir) / decoded.lstrip('/'),
-        ]
-        # Also try stripping leading path components (Songs/, CDLC/ etc)
-        parts = decoded.replace('\\', '/').split('/')
-        for i in range(len(parts)):
-            candidates.append(Path(dlc_dir) / '/'.join(parts[i:]))
-
-        for c in candidates:
-            if c.resolve().exists():
-                song_path = c.resolve()
-                break
-
+        # Tries the path as-is, then with leading components (Songs/, CDLC/ …) stripped
+        song_path = _resolve_song_path(dlc_dir, decoded)
         if not song_path:
-            return {"matches": {}, "error": f"File not found: {decoded} (tried {len(candidates)} paths)"}
+            return {"matches": {}, "error": f"File not found: {decoded}"}
 
         # Read tone data from song manifests
         try:
@@ -1730,8 +1817,25 @@ def _setup_cdlc_routes(app, context):
 
 
 def _detect_at5_presets_path() -> str | None:
-    """Try multiple methods to find AT5 Presets folder."""
+    """Try multiple methods to find AT5 Presets folder (Windows only; AT5 has
+    no Linux build, and macOS users point the plugin at the folder manually)."""
+    if platform.system() != "Windows":
+        return None
     import winreg
+
+    # 0. The user's real Documents folder (follows OneDrive / folder
+    #    redirection / localised names, which the fixed list below can't).
+    try:
+        import ctypes
+        from ctypes import wintypes
+        buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+        # CSIDL_PERSONAL = 5 (Documents), SHGFP_TYPE_CURRENT = 0
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:
+            p = Path(buf.value) / "IK Multimedia" / "AmpliTube 5" / "Presets"
+            if p.exists():
+                return str(p)
+    except Exception:
+        pass
 
     # 1. Read from AT5 settings.properties — most reliable, contains actual path
     appdata = Path(os.environ.get("APPDATA", ""))
