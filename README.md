@@ -1,6 +1,8 @@
 # AT5 Tone Switcher — feedBack Plugin
 **v0.7.0** · requires feedBack 0.3.1-alpha.4 or newer
 
+> ⚠️ **Not yet human-validated.** The 0.7.0 update (feedBack v3 / Desktop) was prepared and shared by Claude (Claude Code in VS Code). Only automated checks have passed so far: the pytest suite, a smoke run against feedBack core 0.3.1-alpha.4, and a headless-browser run of the v3 UI with a *simulated* Desktop audio API. It has not yet been tried by a person with AmpliTube 5 loaded in feedBack Desktop — please report anything that doesn't work.
+
 Automatically switches AmpliTube 5 presets in sync with song playback in feedBack. When you load a song, the plugin extracts the guitar tone data, converts it to AT5 presets, and fires MIDI Program Change messages at the right moments — no manual switching needed.
 
 **feedBack Desktop is the primary target.** Load the AmpliTube 5 VST3 into Desktop's Signal Chain and the plugin drives it directly — no MIDI cable, virtual port, bridge script or symlink. Standalone AT5 (via loopMIDI) and Docker/browser setups (via the MIDI bridge) still work as secondary paths.
