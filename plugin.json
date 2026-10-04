@@ -1,7 +1,7 @@
 {
   "id": "at5_tone",
   "name": "AmpliTube 5 Tone Switcher",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "minHost": "0.3.1-alpha.4",
   "private": false,
   "description": "Automatically switch AmpliTube 5 presets in sync with song playback via MIDI Program Change, directly into the AT5 VST3 on feedBack Desktop.",

@@ -136,3 +136,53 @@ def test_run_pc_map_registers_live_slots(make_plugin, at5_dir):
     assert "AT5_LIVE" in (at5_dir / "ProgramChangePresetList.ik").read_text(encoding="utf-8")
     status = client.get("/api/plugins/at5_tone/setup/status").json()
     assert status["pc_map_exists"] is True and status["live_slots_exist"] is True
+
+
+# ── Output level (tones loaded very loud) ────────────────────────────────
+
+def test_output_level_setting_is_validated_and_persisted(make_plugin, at5_dir):
+    mod, client = make_plugin(at5_docs=at5_dir)
+    assert client.get("/api/plugins/at5_tone/settings").json()["output_db"] == -10.0
+    assert client.post("/api/plugins/at5_tone/settings", json={"output_db": -18}).json()["output_db"] == -18.0
+    for bad in (-31, 7, "loud", True, None):
+        assert client.post("/api/plugins/at5_tone/settings", json={"output_db": bad}).status_code == 400
+    mod2, client2 = make_plugin(at5_docs=at5_dir)          # restart
+    assert client2.get("/api/plugins/at5_tone/settings").json()["output_db"] == -18.0
+
+
+def test_live_slot_gets_the_output_level_and_the_stored_preset_does_not(make_plugin, at5_dir, dlc_dir):
+    pak = dlc_dir / "song.feedpak"
+    write_feedpak_dir(dlc_dir)
+    mod, client = make_plugin(at5_docs=at5_dir)
+    client.post("/api/plugins/at5_tone/settings", json={"output_db": -20})
+    r = client.post("/api/plugins/at5_tone/live_convert", json={"filename": pak.name}).json()
+    assert r["status"] == "ok", r
+    slot = (at5_dir / "Presets" / "Converted" / "AT5_LIVE_00.at5p").read_text(encoding="utf-8")
+    assert '<Output Output="0.1" />' in slot                 # -20 dB
+    # A second load of the stored (song-local) preset sets, not stacks, the level.
+    client.post("/api/plugins/at5_tone/settings", json={"output_db": -6})
+    r = client.post("/api/plugins/at5_tone/live_convert", json={"filename": pak.name}).json()
+    assert r["status"] == "ok", r
+    slot = (at5_dir / "Presets" / "Converted" / "AT5_LIVE_00.at5p").read_text(encoding="utf-8")
+    assert '<Output Output="0.50119" />' in slot             # -6 dB, not -26
+
+
+def test_level_policy_fills_a_missing_amp_volume_and_respects_one_that_is_set():
+    import importlib.util
+    from conftest import ROOT
+    spec = importlib.util.spec_from_file_location("cdlc_to_at5_lp", ROOT / "cdlc_to_at5.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    svt = "2aa0f50f-a6c9-4edd-97c2-df71a24087db"   # Ampeg SVT-VR: Volume1_AmpegSVTVR
+    base = ('<AmpA Bypass="0" Mute="{mute}" OutputVolume="1" Model="' + svt + '">\n'
+            '        <Amp {knobs}/>\n    </AmpA>\n    <Output Output="1" />\n    <MidiAssignments />')
+    out = m.apply_level_policy(base.format(mute="0", knobs='Gain_AmpegSVTVR="3.0000"'), -10)
+    assert 'Volume1_AmpegSVTVR="5.0000"' in out and '<Output Output="0.31623" />' in out
+    assert m.apply_level_policy(out, -10) == out                                   # idempotent
+    own = m.apply_level_policy(base.format(mute="0", knobs='Volume1_AmpegSVTVR="2.0000"'), -10)
+    assert 'Volume1_AmpegSVTVR="2.0000"' in own and "5.0000" not in own           # user's volume kept
+    di = m.apply_level_policy(base.format(mute="1", knobs=""), -10)
+    assert "5.0000" not in di                                                      # DI tone: amp bypassed
+    unknown = m.apply_level_policy(base.replace(svt, "00000000-0000-0000-0000-000000000000")
+                                   .format(mute="0", knobs='Gain="3"'), 0)
+    assert "5.0000" not in unknown and '<Output Output="1" />' in unknown        # unknown model left alone
