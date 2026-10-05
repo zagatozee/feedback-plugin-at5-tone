@@ -264,3 +264,18 @@ def test_level_policy_adds_an_output_to_a_preset_that_has_none():
     out = m.apply_level_policy(_preset(SVT, 'Gain_AmpegSVTVR="3.0000"', output=""), -10)
     assert out.count("<Output ") == 1 and '<Output Output="0.31623" />' in out
     assert m.apply_level_policy(out, -10) == out
+
+
+@pytest.mark.parametrize("model,knob", [
+    (MESA, "Master_MesaMKIIIClean"),     # Master-named knobs exist on 19 models
+    (SVT, "Volume1_AmpegSVTVR"),
+    (SVT, "Output_X"),
+    (SVT, "Loudness_X"),
+])
+def test_an_amp_that_sets_its_own_volume_is_left_alone(model, knob):
+    # Each knob name starts with one of the volume prefixes; filling a default
+    # on top would add a second Volume/Master attribute and break the XML.
+    m = _converter()
+    xml = _preset(model, knob + '="3.0000" ')
+    assert m.apply_level_policy(xml, 0) == xml
+    assert _amp_attrs(m.apply_level_policy(xml, -10)) == {knob: "3.0000"}
