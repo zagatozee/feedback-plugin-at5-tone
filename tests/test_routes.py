@@ -150,7 +150,7 @@ def test_output_level_setting_is_validated_and_persisted(make_plugin, at5_dir):
     assert client2.get("/api/plugins/at5_tone/settings").json()["output_db"] == -18.0
 
 
-def test_live_slot_gets_the_output_level_and_the_stored_preset_does_not(make_plugin, at5_dir, dlc_dir):
+def test_live_slot_gets_the_output_level_set_not_stacked_and_the_stored_preset_keeps_its_seed(make_plugin, at5_dir, dlc_dir):
     pak = dlc_dir / "song.feedpak"
     write_feedpak_dir(dlc_dir)
     mod, client = make_plugin(at5_docs=at5_dir)
@@ -159,12 +159,17 @@ def test_live_slot_gets_the_output_level_and_the_stored_preset_does_not(make_plu
     assert r["status"] == "ok", r
     slot = (at5_dir / "Presets" / "Converted" / "AT5_LIVE_00.at5p").read_text(encoding="utf-8")
     assert '<Output Output="0.1" />' in slot                 # -20 dB
+    # The preset seeded into the song is a copy of that leveled slot (-20 dB).
+    stored = pak / "at5" / "max" / "Clean_Tone.at5p"
+    assert '<Output Output="0.1" />' in stored.read_text(encoding="utf-8")
     # A second load of the stored (song-local) preset sets, not stacks, the level.
     client.post("/api/plugins/at5_tone/settings", json={"output_db": -6})
     r = client.post("/api/plugins/at5_tone/live_convert", json={"filename": pak.name}).json()
     assert r["status"] == "ok", r
     slot = (at5_dir / "Presets" / "Converted" / "AT5_LIVE_00.at5p").read_text(encoding="utf-8")
     assert '<Output Output="0.50119" />' in slot             # -6 dB, not -26
+    # Loading it again set the slot only: the stored file still holds its seed.
+    assert '<Output Output="0.1" />' in stored.read_text(encoding="utf-8")
 
 
 def test_level_policy_fills_a_missing_amp_volume_and_respects_one_that_is_set():
