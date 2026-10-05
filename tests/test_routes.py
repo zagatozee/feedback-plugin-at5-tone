@@ -279,3 +279,13 @@ def test_an_amp_that_sets_its_own_volume_is_left_alone(model, knob):
     xml = _preset(model, knob + '="3.0000" ')
     assert m.apply_level_policy(xml, 0) == xml
     assert _amp_attrs(m.apply_level_policy(xml, -10)) == {knob: "3.0000"}
+
+
+def test_level_policy_fills_both_the_volume_and_the_master_knob():
+    # On the Mesa MKIII the two are different knobs; the SVT test above only
+    # covers an amp whose Master is the same knob as its Volume.
+    m = _converter()
+    out = m.apply_level_policy(_preset(MESA, 'Gain_MesaMKIIIClean="3.0000" '), -10)
+    attrs = _amp_attrs(out)
+    assert attrs["Volume_MesaMKIIIClean"] == "5.0000" and attrs["Master_MesaMKIIIClean"] == "5.0000"
+    assert attrs["Gain_MesaMKIIIClean"] == "3.0000"
