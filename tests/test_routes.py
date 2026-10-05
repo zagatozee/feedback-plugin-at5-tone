@@ -232,3 +232,35 @@ def test_a_level_policy_failure_still_gives_the_tone_its_slot(make_plugin, at5_d
     slot = (at5_dir / "Presets" / "Converted" / "AT5_LIVE_00.at5p").read_text(encoding="utf-8")
     assert '<Output Output="1" />' in slot
     assert "level policy not applied" in caplog.text
+
+
+SVT = "2aa0f50f-a6c9-4edd-97c2-df71a24087db"        # Ampeg SVT-VR: Volume1_AmpegSVTVR
+MESA = "a91067a3-fd80-40a8-be35-0681da5c4f47"       # Volume_MesaMKIIIClean and Master_MesaMKIIIClean are different knobs
+CHAMPION = "016a8c2a-489e-49da-81d7-5b72feb60f74"   # Volume, Loudness and Master are all Volume_Champion
+
+
+def _converter():
+    import importlib.util
+    from conftest import ROOT
+    spec = importlib.util.spec_from_file_location("cdlc_to_at5_lp2", ROOT / "cdlc_to_at5.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _preset(model, knobs="", output='    <Output Output="1" />\n'):
+    return ('<AmpA Bypass="0" Mute="0" OutputVolume="1" Model="' + model + '">\n'
+            '        <Amp ' + knobs + '/>\n    </AmpA>\n' + output + '    <MidiAssignments />')
+
+
+def _amp_attrs(xml_text):
+    """The amp's attributes, parsed as XML (which rejects a duplicated attribute)."""
+    import xml.etree.ElementTree as ET
+    return ET.fromstring("<r>" + xml_text + "</r>").find("AmpA/Amp").attrib
+
+
+def test_level_policy_adds_an_output_to_a_preset_that_has_none():
+    m = _converter()
+    out = m.apply_level_policy(_preset(SVT, 'Gain_AmpegSVTVR="3.0000"', output=""), -10)
+    assert out.count("<Output ") == 1 and '<Output Output="0.31623" />' in out
+    assert m.apply_level_policy(out, -10) == out
