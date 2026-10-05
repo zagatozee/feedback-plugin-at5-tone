@@ -289,3 +289,16 @@ def test_level_policy_fills_both_the_volume_and_the_master_knob():
     attrs = _amp_attrs(out)
     assert attrs["Volume_MesaMKIIIClean"] == "5.0000" and attrs["Master_MesaMKIIIClean"] == "5.0000"
     assert attrs["Gain_MesaMKIIIClean"] == "3.0000"
+
+
+@pytest.mark.parametrize("model,knob", [
+    (CHAMPION, "Volume_Champion"),       # Volume, Loudness and Master are all this knob
+    ("0265b273-d648-47c7-a5ef-579acba82a0a", "Master_AmpegV4B"),   # Volume and Master are the same knob
+])
+def test_level_policy_fills_a_shared_volume_and_master_knob_once(model, knob):
+    # 43 of the 70 mapped amps use one knob for both roles; a duplicate attribute
+    # is invalid XML, which AmpliTube may refuse to load.
+    m = _converter()
+    out = m.apply_level_policy(_preset(model), -10)
+    assert out.count(knob + "=") == 1
+    assert _amp_attrs(out) == {knob: "5.0000"}
