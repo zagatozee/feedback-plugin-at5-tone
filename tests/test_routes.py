@@ -302,3 +302,43 @@ def test_level_policy_fills_a_shared_volume_and_master_knob_once(model, knob):
     out = m.apply_level_policy(_preset(model), -10)
     assert out.count(knob + "=") == 1
     assert _amp_attrs(out) == {knob: "5.0000"}
+
+
+def _settings_snapshot(mod, client, config_dir):
+    saved = config_dir / "at5_tone_settings.json"
+    return (client.get("/api/plugins/at5_tone/settings").json(), dict(mod._live_state),
+            saved.read_bytes() if saved.exists() else None)
+
+
+def _mixed_bodies():
+    """Every combination of the accepted fields that includes a rejected one."""
+    import itertools
+    good = [("tier", "se"), ("free_mode", True), ("noise_gate", True), ("output_db", -20)]
+    bad = [{"output_db": 7}, {"output_db": "x"}, {"output_db": True}, {"tier": "nope"},
+           {"tier": "nope", "output_db": 7}]
+    for n in range(len(good) + 1):
+        for subset in itertools.combinations(good, n):
+            for b in bad:
+                yield {**dict(subset), **b}
+
+
+def test_a_rejected_settings_post_changes_nothing(make_plugin, at5_dir, config_dir):
+    mod, client = make_plugin(at5_docs=at5_dir)
+    mod._live_state.update({"song": "keep.feedpak", "slots": {"Clean_Tone": 120}})
+    # The exact request from the review, then every combination that has a bad field.
+    bodies = [{"tier": "se", "noise_gate": True, "output_db": 7}, *_mixed_bodies()]
+    for body in bodies:
+        before = _settings_snapshot(mod, client, config_dir)
+        r = client.post("/api/plugins/at5_tone/settings", json=body)
+        assert r.status_code == 400, body
+        assert _settings_snapshot(mod, client, config_dir) == before, body
+        assert mod._live_state["song"] == "keep.feedpak", body      # live slots not cleared
+
+
+def test_a_valid_mixed_settings_post_applies_every_field(make_plugin, at5_dir):
+    mod, client = make_plugin(at5_docs=at5_dir)
+    r = client.post("/api/plugins/at5_tone/settings",
+                    json={"tier": "se", "noise_gate": True, "output_db": -20}).json()
+    assert (r["tier"], r["free_mode"], r["noise_gate"], r["output_db"]) == ("se", False, True, -20.0)
+    r = client.post("/api/plugins/at5_tone/settings", json={"free_mode": True}).json()
+    assert (r["tier"], r["free_mode"]) == ("cs", True)
