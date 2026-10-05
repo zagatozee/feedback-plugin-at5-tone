@@ -82,6 +82,20 @@
             </span>
           </span>
         </label>
+        <div style="margin-top: 14px;">
+          <label for="at5-output-slider" style="font-size: 0.875rem; color: #d1d5db; font-weight: 500;">
+            Output level <span id="at5-output-label" style="color: #f97316; margin-left: 6px;">-10 dB</span>
+          </label>
+          <input type="range" id="at5-output-slider" min="-30" max="6" step="1" value="-10"
+            oninput="document.getElementById('at5-output-label').textContent = (this.value > 0 ? '+' : '') + this.value + ' dB'"
+            onchange="at5SetOutputLevel(parseFloat(this.value))"
+            style="width: 100%; accent-color: #f97316; margin-top: 6px;">
+          <span style="font-size: 0.7rem; color: #6b7280; line-height: 1.5; display: block;">
+            Master output of every tone the plugin loads into AmpliTube (the preset's Output).
+            Each song loads a fresh preset, so AmpliTube's own Output knob resets — set it here instead.
+            Applies from the next song. A tone whose amp has no volume of its own also gets a middle setting (5).
+          </span>
+        </div>
       </div>
     </div>
   
@@ -100,6 +114,12 @@
                 if (radio) radio.checked = true;
                 var ngCb = document.getElementById('at5-noise-gate-checkbox');
                 if (ngCb) ngCb.checked = !!data.noise_gate;
+                if (typeof data.output_db === 'number') {
+                    var os = document.getElementById('at5-output-slider');
+                    var ol = document.getElementById('at5-output-label');
+                    if (os) os.value = data.output_db;
+                    if (ol) ol.textContent = (data.output_db > 0 ? '+' : '') + data.output_db + ' dB';
+                }
                 // Prefire is a per-browser setting (seconds) owned by screen.js
                 var stored = null;
                 try { stored = localStorage.getItem('at5_prefire_ms'); } catch (e) {}

@@ -1511,6 +1511,67 @@ def lookup_effect(rs_key, free_mode=False):
             return v
     return None
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LEVEL POLICY (applied to every preset as it goes into a live slot)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Converted tones came out very loud: the song tones rarely carry an amp
+# Volume/Master knob, so AT5 used each amp model's own default, and the
+# preset's master <Output> was always 1.0 (0 dB — AT5's Output is a linear
+# gain: its own presets use e.g. 1.58489 for +4 dB). Turning AT5's Output knob
+# down doesn't stick either: every song loads a fresh preset.
+#
+# apply_level_policy() runs on the slot file, never on the stored preset, so it
+# covers freshly converted AND song-local presets and stays idempotent:
+#   - <Output Output> is SET to the chosen level (not scaled), so a preset that
+#     round-trips slot -> song folder -> slot is not trimmed twice;
+#   - an amp with no volume-type knob at all gets DEFAULT_AMP_VOLUME on its
+#     model's own Volume/Master parameters (AMP_KNOB_MAP); a knob the preset
+#     already sets — e.g. one the user turned in AT5 and saved — is left alone.
+
+DEFAULT_OUTPUT_DB = -10.0
+OUTPUT_DB_MIN, OUTPUT_DB_MAX = -30.0, 6.0
+DEFAULT_AMP_VOLUME = 5.0   # 0-10, about the median of AT5's own factory presets
+_VOLUME_KNOB_PREFIXES = ("Volume", "Master", "Output", "Loudness")
+
+
+def output_gain(db: float) -> float:
+    """dB -> AT5's linear Output value (0 dB = 1.0)."""
+    db = max(OUTPUT_DB_MIN, min(OUTPUT_DB_MAX, float(db)))
+    return 10 ** (db / 20.0)
+
+
+def apply_level_policy(xml_text: str, output_db: float = DEFAULT_OUTPUT_DB) -> str:
+    """Return the preset XML with the master output set to `output_db` and a
+    default amp volume filled in when the amp sets none. Idempotent."""
+    import re
+    gain = f"{output_gain(output_db):.5g}"
+    xml_text, n = re.subn(r'<Output\s+Output="[^"]*"', f'<Output Output="{gain}"', xml_text, count=1)
+    if not n:
+        xml_text = xml_text.replace("<MidiAssignments", f'<Output Output="{gain}" />\n    <MidiAssignments', 1)
+
+    amp = re.search(r'<AmpA\s([^>]*)>\s*<Amp(\s[^>]*?)?\s*/>', xml_text)
+    if not amp:
+        return xml_text
+    amp_attrs = dict(re.findall(r'(\w+)="([^"]*)"', amp.group(1)))
+    if amp_attrs.get("Mute") == "1":
+        return xml_text                     # DI tone: amp bypassed
+    knobs = dict(re.findall(r'(\w+)="([^"]*)"', amp.group(2) or ""))
+    if any(k.startswith(_VOLUME_KNOB_PREFIXES) for k in knobs):
+        return xml_text                     # the preset sets its own volume
+    names = []
+    for role in ("Volume", "Master"):
+        name = AMP_KNOB_MAP.get(amp_attrs.get("Model", ""), {}).get(role)
+        if name and name not in names:
+            names.append(name)
+    if not names:
+        return xml_text                     # model's volume knob unknown: leave it
+    added = " ".join(f'{n}="{DEFAULT_AMP_VOLUME:.4f}"' for n in names)
+    amp_el_start = amp.start(0) + amp.group(0).index("<Amp", 4)
+    insert_at = amp_el_start + len("<Amp")
+    return xml_text[:insert_at] + " " + added + xml_text[insert_at:]
+
+
 def rs_knob_to_at5(rs_key, rs_value, amp_guid=""):
     """Convert RS knob key+value (0-100) to AT5 param name+value (0-10).
     Appends the amp-specific DSP suffix if known."""

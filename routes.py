@@ -343,6 +343,7 @@ LIVE_SLOT_PREFIX = "AT5_LIVE"
 _at5_tier = "max"  # default: full library, no constraints
 _at5_free_mode = False  # legacy alias — True maps to tier="cs"
 _at5_noise_gate = False  # global pre-amp noise gate
+_at5_output_db = -10.0   # preset master output, dB (cdlc_to_at5.apply_level_policy)
 _bridge_cmd_queue: list = []  # pending MIDI commands for bridge window
 _bridge_cmd_seq: int   = 0
 
@@ -395,7 +396,7 @@ def _load_converter():
 
 def _load_settings():
     """Restore persisted settings (tier, noise gate, AT5 folder override)."""
-    global _at5_tier, _at5_free_mode, _at5_noise_gate, _at5_docs_override
+    global _at5_tier, _at5_free_mode, _at5_noise_gate, _at5_docs_override, _at5_output_db
     if not _config_dir:
         return
     path = Path(_config_dir) / SETTINGS_FILE
@@ -413,6 +414,9 @@ def _load_settings():
         _at5_free_mode = (_at5_tier == "cs")
     if isinstance(data.get("noise_gate"), bool):
         _at5_noise_gate = data["noise_gate"]
+    db = data.get("output_db")
+    if isinstance(db, (int, float)) and not isinstance(db, bool) and -30 <= db <= 6:
+        _at5_output_db = float(db)
     if isinstance(data.get("at5_docs_path"), str):
         _at5_docs_override = data["at5_docs_path"].strip()
 
@@ -421,7 +425,8 @@ def _save_settings():
     if not _config_dir:
         return
     path = Path(_config_dir) / SETTINGS_FILE
-    data = {"tier": _at5_tier, "noise_gate": _at5_noise_gate, "at5_docs_path": _at5_docs_override}
+    data = {"tier": _at5_tier, "noise_gate": _at5_noise_gate, "at5_docs_path": _at5_docs_override,
+            "output_db": _at5_output_db}
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
@@ -697,6 +702,20 @@ def _read_song_json_files(song_path: Path) -> dict:
     return result
 
 
+def _apply_level_to_slot(slot_file):
+    """Set the slot preset's master output to the chosen level and fill in a
+    default amp volume when the preset sets none (apply_level_policy). Runs on
+    the live slot copy only — the stored song preset is never changed."""
+    try:
+        mod = _load_converter()
+        text = Path(slot_file).read_text(encoding="utf-8")
+        new = mod.apply_level_policy(text, _at5_output_db)
+        if new != text:
+            Path(slot_file).write_text(new, encoding="utf-8")
+    except Exception as e:
+        log.warning("[AT5 Live] level policy not applied to %s: %s", slot_file, e)
+
+
 def _write_live_slots(tones, presets_dir, slot_offset=0):
     """Convert tones and overwrite live slot .at5p files.
     slot_offset: start writing at this slot index (for partial updates).
@@ -738,6 +757,7 @@ def _write_live_slots(tones, presets_dir, slot_offset=0):
                 if written:
                     import shutil
                     shutil.copy2(written[0], slot_path)
+                    _apply_level_to_slot(slot_path)
                     slot_map[tone_key] = pc_num
                     log.info(f"[AT5 Live] Slot {i} PC{pc_num}: {tone_key} -> {slot_path.name}")
                 else:
@@ -831,6 +851,7 @@ def _copy_song_presets_to_slots(song_presets: dict, slot_map_order: list,
         pc_num    = LIVE_SLOT_START + i
         slot_file = presets_dir / f"{LIVE_SLOT_PREFIX}_{i:02d}.at5p"
         shutil.copy2(song_presets[tone_key], slot_file)
+        _apply_level_to_slot(slot_file)
         result[tone_key] = pc_num
         log.info(f"[AT5 Live] Slot {i} PC{pc_num}: {tone_key} <- song-local {('free' if _at5_free_mode else 'max')} preset")
     return result
@@ -962,33 +983,45 @@ def setup(app, context):
             "tier":      _at5_tier,
             "free_mode": _at5_tier == "cs",  # legacy compat
             "noise_gate": _at5_noise_gate,
+            "output_db": _at5_output_db,
         }
 
     @app.post("/api/plugins/at5_tone/settings")
     async def update_settings(request: Request):
-        global _at5_tier, _at5_free_mode, _at5_noise_gate
+        global _at5_tier, _at5_free_mode, _at5_noise_gate, _at5_output_db
         body, err = await _read_body(request)
         if err:
             return err
+        # Validate every field before assigning any, so a 400 changes nothing.
+        new_tier = None
         if "tier" in body:
             new_tier = body["tier"]
             if new_tier not in TIERS:
                 return _bad_request(f"tier must be one of {', '.join(TIERS)}")
+        elif "free_mode" in body:
+            # Legacy boolean support
+            new_tier = "cs" if bool(body["free_mode"]) else "max"
+        new_db = None
+        if "output_db" in body:
+            new_db = body["output_db"]
+            if isinstance(new_db, bool) or not isinstance(new_db, (int, float)) or not -30 <= new_db <= 6:
+                return _bad_request("output_db must be a number from -30 to 6")
+        if new_tier is not None:
             _at5_tier = new_tier
             _at5_free_mode = (_at5_tier == "cs")
             log.info(f"[AT5] tier set to {_at5_tier}")
             _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
-        elif "free_mode" in body:
-            # Legacy boolean support
-            _at5_tier = "cs" if bool(body["free_mode"]) else "max"
-            _at5_free_mode = (_at5_tier == "cs")
-            log.info(f"[AT5] tier set to {_at5_tier} (via free_mode)")
-            _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
         if "noise_gate" in body:
             _at5_noise_gate = bool(body["noise_gate"])
             log.info(f"[AT5] noise_gate set to {_at5_noise_gate}")
+        if new_db is not None:
+            _at5_output_db = float(new_db)
+            log.info(f"[AT5] output level set to {_at5_output_db:+.1f} dB")
+            # Re-fill the slots on the next song load so the new level applies.
+            _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
         _save_settings()
-        return {"status": "ok", "tier": _at5_tier, "free_mode": _at5_free_mode, "noise_gate": _at5_noise_gate}
+        return {"status": "ok", "tier": _at5_tier, "free_mode": _at5_free_mode, "noise_gate": _at5_noise_gate,
+                "output_db": _at5_output_db}
 
     @app.get("/api/plugins/at5_tone/live_status")
     def live_status():

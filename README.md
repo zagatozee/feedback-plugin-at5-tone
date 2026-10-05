@@ -1,5 +1,5 @@
 # AT5 Tone Switcher — feedBack Plugin
-**v0.7.0** · requires feedBack 0.3.1-alpha.4 or newer
+**v0.7.1** · requires feedBack 0.3.1-alpha.4 or newer
 
 > ⚠️ **Not yet human-validated.** The 0.7.0 update (feedBack v3 / Desktop) was prepared and shared by Claude (Claude Code in VS Code). Only automated checks have passed so far: the pytest suite, a smoke run against feedBack core 0.3.1-alpha.4, and a headless-browser run of the v3 UI with a *simulated* Desktop audio API. It has not yet been tried by a person with AmpliTube 5 loaded in feedBack Desktop — please report anything that doesn't work.
 
@@ -136,6 +136,12 @@ SE and AT5 tiers route the same amps to closer matches where available (Peavey �
 Effects with no CS equivalent are dropped rather than substituted wrongly. Dropped in CS: pitch shifter, whammy, octave, phaser, ring mod, bit crusher, acoustic/bass emulator, vibe. Everything else (wah, chorus, flanger, overdrive, compressor, delay, reverb, tremolo, noise gate, EQ) is remapped to the closest CS equivalent.
 
 ---
+
+## Output Level
+
+Every song loads a fresh preset into AmpliTube, so AT5's own **Output** knob resets each time. Set the level in the plugin's **Settings → Output level** instead (−30 to +6 dB, default **−10 dB**). It is written into the master output of every tone as it goes into a live slot — freshly converted and song-local presets alike — and applies from the next song. The level is *set* on the live slot each time a tone is loaded, never scaled, so it does not stack. A preset already stored with the song is not re-leveled by this, but one seeded from a fresh conversion is stored at the level in effect when it was converted (and is set again to your current level when it is loaded).
+
+Most song tones carry no amp **Volume/Master** knob, which left AT5 on the amp model's own (loud) default. When a tone's amp sets no volume at all, the plugin now fills in a middle value (5) on that model's Volume/Master knobs. A volume the preset already sets — for example one you turned in AT5 and saved back to the song — is left alone. Note that the Output level setting owns each preset's master output: a different Output saved in a song preset is replaced at playback.
 
 ## Global Noise Gate
 

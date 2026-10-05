@@ -1164,6 +1164,12 @@ async function _at5LoadSettings() {
         if (cb) cb.checked = (tier === 'cs');
         const ngCb = document.getElementById('at5-noise-gate-checkbox');
         if (ngCb) ngCb.checked = !!data.noise_gate;
+        if (typeof data.output_db === 'number') {
+            const os = document.getElementById('at5-output-slider');
+            const ol = document.getElementById('at5-output-label');
+            if (os) os.value = data.output_db;
+            if (ol) ol.textContent = `${data.output_db > 0 ? '+' : ''}${data.output_db} dB`;
+        }
     } catch(e) {}
     // Restore prefire slider from localStorage
     const prefireMs = Math.round(AT5_PREFIRE_MS * 1000);
@@ -1171,6 +1177,24 @@ async function _at5LoadSettings() {
     const label  = document.getElementById('at5-prefire-label');
     if (slider) slider.value = prefireMs;
     if (label)  label.textContent = `${prefireMs} ms`;
+}
+
+// Master output of every tone loaded into AT5 (dB). Applied to the live slot
+// preset on the next song load (apply_level_policy in cdlc_to_at5.py).
+async function at5SetOutputLevel(db) {
+    try {
+        const r = await fetch('/api/plugins/at5_tone/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ output_db: db }),
+        });
+        const data = await r.json();
+        console.log(`[AT5] Output level: ${data.output_db} dB`);
+        Object.keys(_at5LiveSlots).forEach(k => delete _at5LiveSlots[k]);
+        _at5LiveLastFile = null;
+    } catch(e) {
+        console.warn('[AT5] Output level error:', e.message);
+    }
 }
 
 async function at5SetNoisegate(enabled) {
@@ -1263,6 +1287,7 @@ window.at5SetPrefire         = at5SetPrefire;
 window.at5SetFreeMode        = at5SetFreeMode;
 window.at5SetTier            = at5SetTier;
 window.at5SetNoisegate       = at5SetNoisegate;
+window.at5SetOutputLevel     = at5SetOutputLevel;
 
 // Refresh status + log whenever our screen is shown (per-visit re-init)
 function _at5OnScreenShown() {
