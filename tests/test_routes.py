@@ -199,3 +199,17 @@ def test_output_level_accepts_both_ends_of_the_slider(make_plugin, at5_dir):
         r = client.post("/api/plugins/at5_tone/settings", json={"output_db": db})
         assert r.status_code == 200, db
         assert r.json()["output_db"] == float(db)
+
+
+@pytest.mark.parametrize("stored", [99, -31, True, "x", None, [1], float("nan")])
+def test_a_bad_persisted_output_level_loads_as_the_default(make_plugin, at5_dir, config_dir, stored):
+    # json.dumps writes NaN as a bare NaN token, which Python's loader accepts.
+    (config_dir / "at5_tone_settings.json").write_text(json.dumps({"output_db": stored}), encoding="utf-8")
+    mod, client = make_plugin(at5_docs=at5_dir)
+    assert client.get("/api/plugins/at5_tone/settings").json()["output_db"] == -10.0
+
+
+def test_a_good_persisted_output_level_loads(make_plugin, at5_dir, config_dir):
+    (config_dir / "at5_tone_settings.json").write_text(json.dumps({"output_db": -18}), encoding="utf-8")
+    mod, client = make_plugin(at5_docs=at5_dir)
+    assert client.get("/api/plugins/at5_tone/settings").json()["output_db"] == -18.0
