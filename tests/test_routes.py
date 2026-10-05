@@ -213,3 +213,22 @@ def test_a_good_persisted_output_level_loads(make_plugin, at5_dir, config_dir):
     (config_dir / "at5_tone_settings.json").write_text(json.dumps({"output_db": -18}), encoding="utf-8")
     mod, client = make_plugin(at5_docs=at5_dir)
     assert client.get("/api/plugins/at5_tone/settings").json()["output_db"] == -18.0
+
+
+def test_a_level_policy_failure_still_gives_the_tone_its_slot(make_plugin, at5_dir, dlc_dir, monkeypatch, caplog):
+    pak = dlc_dir / "song.feedpak"
+    write_feedpak_dir(dlc_dir)
+    mod, client = make_plugin(at5_docs=at5_dir)
+
+    def boom(*a, **k):
+        raise RuntimeError("level policy broke")
+
+    monkeypatch.setattr(mod._load_converter(), "apply_level_policy", boom)
+    with caplog.at_level("WARNING"):
+        r = client.post("/api/plugins/at5_tone/live_convert", json={"filename": pak.name}).json()
+    # The tone keeps its slot (unleveled) instead of dropping to the PC table.
+    assert r["status"] == "ok" and r["slots"] == {"Clean_Tone": mod.LIVE_SLOT_START}, r
+    assert r["warnings"] == []
+    slot = (at5_dir / "Presets" / "Converted" / "AT5_LIVE_00.at5p").read_text(encoding="utf-8")
+    assert '<Output Output="1" />' in slot
+    assert "level policy not applied" in caplog.text
