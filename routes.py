@@ -992,28 +992,30 @@ def setup(app, context):
         body, err = await _read_body(request)
         if err:
             return err
+        # Validate every field before assigning any, so a 400 changes nothing.
+        new_tier = None
         if "tier" in body:
             new_tier = body["tier"]
             if new_tier not in TIERS:
                 return _bad_request(f"tier must be one of {', '.join(TIERS)}")
+        elif "free_mode" in body:
+            # Legacy boolean support
+            new_tier = "cs" if bool(body["free_mode"]) else "max"
+        new_db = None
+        if "output_db" in body:
+            new_db = body["output_db"]
+            if isinstance(new_db, bool) or not isinstance(new_db, (int, float)) or not -30 <= new_db <= 6:
+                return _bad_request("output_db must be a number from -30 to 6")
+        if new_tier is not None:
             _at5_tier = new_tier
             _at5_free_mode = (_at5_tier == "cs")
             log.info(f"[AT5] tier set to {_at5_tier}")
             _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
-        elif "free_mode" in body:
-            # Legacy boolean support
-            _at5_tier = "cs" if bool(body["free_mode"]) else "max"
-            _at5_free_mode = (_at5_tier == "cs")
-            log.info(f"[AT5] tier set to {_at5_tier} (via free_mode)")
-            _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
         if "noise_gate" in body:
             _at5_noise_gate = bool(body["noise_gate"])
             log.info(f"[AT5] noise_gate set to {_at5_noise_gate}")
-        if "output_db" in body:
-            db = body["output_db"]
-            if isinstance(db, bool) or not isinstance(db, (int, float)) or not -30 <= db <= 6:
-                return _bad_request("output_db must be a number from -30 to 6")
-            _at5_output_db = float(db)
+        if new_db is not None:
+            _at5_output_db = float(new_db)
             log.info(f"[AT5] output level set to {_at5_output_db:+.1f} dB")
             # Re-fill the slots on the next song load so the new level applies.
             _live_state.update({"song": None, "slots": {}, "warnings": [], "elapsed_ms": 0})
