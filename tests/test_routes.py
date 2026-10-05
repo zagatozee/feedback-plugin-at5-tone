@@ -191,3 +191,11 @@ def test_level_policy_fills_a_missing_amp_volume_and_respects_one_that_is_set():
     unknown = m.apply_level_policy(base.replace(svt, "00000000-0000-0000-0000-000000000000")
                                    .format(mute="0", knobs='Gain="3"'), 0)
     assert "5.0000" not in unknown and '<Output Output="1" />' in unknown        # unknown model left alone
+
+
+def test_output_level_accepts_both_ends_of_the_slider(make_plugin, at5_dir):
+    mod, client = make_plugin(at5_docs=at5_dir)
+    for db in (-30, 6, -30.0, 6.0):
+        r = client.post("/api/plugins/at5_tone/settings", json={"output_db": db})
+        assert r.status_code == 200, db
+        assert r.json()["output_db"] == float(db)
