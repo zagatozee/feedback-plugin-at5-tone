@@ -540,34 +540,12 @@ def _write_null_preset(path, slot_index, mod=None):
     """Write a valid empty AT5 preset using the real template from cdlc_to_at5."""
     if mod is None:
         mod = _load_converter()
-    NULL   = mod.NULL_GUID
-    DESC   = f"AT5 Live Slot {slot_index:02d}"
-    na2    = mod.null_attrs(2);  ns2 = mod.null_slots(2)
-    na3    = mod.null_attrs(3);  ns3 = mod.null_slots(3)
-    na4    = mod.null_attrs(4);  ns4 = mod.null_slots(4)
-    na6    = mod.null_attrs(6);  ns6 = mod.null_slots(6)
-    xml = mod.AT5P_TEMPLATE.format(
-        guid          = str(_uuid.uuid4()),
-        amp_guid      = NULL,
-        amp_muted     = "1",
-        amp_params    = "",
-        null_guid     = NULL,
-        cab_model     = mod.DEFAULT_CAB_4x12,
-        cab_muted     = "1",
-        speaker_a     = mod.DEFAULT_SPEAKER_A.replace("-", ""),
-        speaker_b     = mod.DEFAULT_SPEAKER_B.replace("-", ""),
-        stompa1_attrs = na6, stompa1_slots = ns6,
-        stompb1_attrs = na6, stompb1_slots = ns6,
-        racka_attrs   = na2, racka_slots   = ns2,
-        rackb_attrs   = na2, rackb_slots   = ns2,
-        null2_attrs   = na2, null2_slots   = ns2,
-        null3_attrs   = na3, null3_slots   = ns3,
-        null4_attrs   = na4, null4_slots   = ns4,
-        null6_attrs   = na6, null6_slots   = ns6,
-        description   = DESC,
-        song          = "",
-        di_before_amp = "0",
-    )
+    # template_defaults() fills every template field (amp muted, cab muted,
+    # all effect slots empty), so this can't drift from the template again.
+    xml = mod.AT5P_TEMPLATE.format(**mod.template_defaults(
+        guid=str(_uuid.uuid4()),
+        description=f"AT5 Live Slot {slot_index:02d}",
+    ))
     path.write_text(xml, encoding="utf-8")
 
 
@@ -599,7 +577,8 @@ def _extract_song_tones(song_path: Path) -> dict:
     """Extract unique tones from a song file or folder.
     Supports feedpak/sloppak archives, their directory forms, and loose
     folders carrying CDLC manifest JSON files.
-    Returns dict: { tone_key: {"Key", "Name", "GearList"} }
+    Returns dict: { tone_key: {"Key", "Name", "GearList", "Volume"} }
+    ("Volume" is the Rocksmith per-tone level in dB, or None.)
     """
     tones = {}
 
@@ -617,6 +596,7 @@ def _extract_song_tones(song_path: Path) -> dict:
                     "Key":      tk,
                     "Name":     defn.get("Name") or defn.get("name", tk),
                     "GearList": _normalise_gearlist(gear),
+                    "Volume":   defn.get("Volume", defn.get("volume")),
                 }
 
     def _from_manifest_json(obj):
@@ -633,6 +613,7 @@ def _extract_song_tones(song_path: Path) -> dict:
                     "Key":      tk,
                     "Name":     tone.get("Name", tk),
                     "GearList": _normalise_gearlist(gear),
+                    "Volume":   tone.get("Volume"),
                 }
         if "GearList" in obj and "Key" in obj:
             tk = obj["Key"]
@@ -641,6 +622,7 @@ def _extract_song_tones(song_path: Path) -> dict:
                     "Key":      tk,
                     "Name":     obj.get("Name", tk),
                     "GearList": _normalise_gearlist(obj["GearList"]),
+                    "Volume":   obj.get("Volume"),
                 }
 
     if song_path.is_dir():
@@ -752,6 +734,7 @@ def _write_live_slots(tones, presets_dir, slot_offset=0):
                     free_mode=_at5_free_mode,
                     tier=_at5_tier,
                     noise_gate=_at5_noise_gate,
+                    volume=tone_data.get("Volume"),
                 )
                 written = list(tmp_path.glob("*.at5p"))
                 if written:
@@ -798,15 +781,85 @@ def _song_preset_dir(song_path: Path, free_mode: bool = None) -> Path:
         return song_path.parent / song_path.stem / "at5" / mode
 
 
+_CONVERTER_MARK_RE = re.compile(r'KeyWords="at5_tone converter ([0-9.]+)"')
+_USER_MARK = "at5_tone user"
+
+
+def _is_stale_generated(path: Path) -> bool:
+    """True for a song preset this plugin generated with an older converter
+    and the user never saved back (so it can be regenerated).
+
+    0.8+ output carries KeyWords="at5_tone converter <version>"; save-back
+    rewrites that to "at5_tone user".  Pre-0.8 output has no marker but keeps
+    the old template's exact attribute sequences, which AmpliTube's own writer
+    does not reproduce (checked against every factory/user preset on the dev
+    machine).  Anything ambiguous is kept: only clear matches are retired, and
+    retired files are moved aside, never deleted."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if _USER_MARK in text:
+        return False
+    m = _CONVERTER_MARK_RE.search(text)
+    if m:
+        mod = _load_converter()
+        return m.group(1) != getattr(mod, "CONVERTER_VERSION", m.group(1))
+    # Old template fingerprint: matched 12/12 real 0.7 files and 0 of 776
+    # AmpliTube-written presets (factory + user) when this was written.
+    return all(s in text for s in ('MonoChainDualCab="1"', 'Album=""', 'IRDecimation="1"', 'KeyWords=""',
+                                   'GUILoadComplete="0"',
+                                   'RoomType="Large Studio" RoomMicType="Condenser 87" Mic0Model='))
+
+
+def _retire_stale_presets(d: Path) -> list:
+    """Move stale generated presets into <d>/superseded/ (never deleted) so
+    they are re-converted with the current converter."""
+    moved = []
+    for p in d.glob("*.at5p"):
+        if _is_stale_generated(p):
+            backup = d / "superseded"
+            backup.mkdir(exist_ok=True)
+            target = backup / p.name
+            n = 1
+            while target.exists():                 # keep every earlier backup too
+                target = backup / f"{p.stem}.{n}{p.suffix}"
+                n += 1
+            p.replace(target)
+            moved.append(p.stem)
+    if moved:
+        log.info(f"[AT5] {len(moved)} preset(s) from an older converter moved to {d / 'superseded'} "
+                 f"and will be re-converted: {moved}")
+    return moved
+
+
+def _mark_user_preset(path: Path):
+    """Tag a saved-back preset as the user's, so converter upgrades never
+    replace it."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        new = _CONVERTER_MARK_RE.sub(f'KeyWords="{_USER_MARK}"', text)
+        if new == text and _USER_MARK not in text:
+            new = re.sub(r'KeyWords="([^"]*)"', lambda m: f'KeyWords="{(m.group(1) + " " if m.group(1) else "")}{_USER_MARK}"',
+                         text, count=1)
+        if new != text:
+            path.write_text(new, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _load_song_presets(song_path: Path, free_mode: bool = None) -> dict:
     """
     Return dict of { tone_key: Path } for any .at5p files stored for this song.
     Looks in the mode-specific subfolder (at5/free/ or at5/max/).
     Returns empty dict if folder doesn't exist yet.
+    Presets generated by an older converter (and never saved back) are moved
+    aside first, so they get re-converted.
     """
     d = _song_preset_dir(song_path, free_mode)
     if not d.exists():
         return {}
+    _retire_stale_presets(d)
     return {p.stem: p for p in d.glob("*.at5p")}
 
 
@@ -1082,6 +1135,7 @@ def setup(app, context):
                 continue
             dest = song_dir / f"{tk}.at5p"
             shutil.copy2(slot_file, dest)
+            _mark_user_preset(dest)
             saved.append(tk)
             log.info(f"[AT5 Live] Saved back: {tk} -> {dest}")
 
@@ -1162,7 +1216,8 @@ def setup(app, context):
                                 song_path, tmp_path,
                                 free_mode=_at5_free_mode,
                                 tier=_at5_tier,
-                                noise_gate=_at5_noise_gate)
+                                noise_gate=_at5_noise_gate,
+                                volume=td.get("Volume"))
                             written = list(tmp_path.glob("*.at5p"))
                             if written:
                                 slot_map[tk] = LIVE_SLOT_START + i

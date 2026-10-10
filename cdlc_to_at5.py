@@ -17,6 +17,13 @@ from pathlib import Path
 
 NULL_GUID = "773b8ea7-b54a-4a3c-99df-ffbbf6d29271"  # empty/null slot
 
+# Written into every converted preset's MetaInfo KeyWords so the plugin can
+# tell its own (regenerable) output from presets a user saved back, and
+# re-convert song caches made by an older converter.  Bump on any change
+# that alters conversion output.
+CONVERTER_VERSION = "0.8.0"
+CONVERTER_MARK = f"at5_tone converter {CONVERTER_VERSION}"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # AMP MAPPING  (Rocksmith Key -> AT5 GUID)
 # Source: GearInfo/Cabs.json extracted from AmpliTube 5.pak
@@ -122,6 +129,12 @@ AMP_MAP = {
     "Amp_OrangeAD200":       "dfb00647-6603-4fe1-a67a-5690a4dad0fb",  # AD 200
     "Amp_OrangeDualTerror":  "3c25674f-a418-4fec-863c-f94495c746a0",  # Dual Terror
     "Amp_OrangeOR50":        "827aedfb-cdc1-412e-8e47-5bac3c3c6d06",  # OR 50
+    "Amp_OrangeAD50":        "dd7b0e06-a17a-4851-83c4-ee32ca303b01",  # AD 30 (closest Orange AD; no AD50 in AT5)
+    "Amp_OrangeOR100":       "6e8690b3-f6cf-4c36-b3c2-7f38fcc5706e",  # OR-120 (closest Orange OR head)
+    "Amp_OrangeJimmyBean":   "3c25674f-a418-4fec-863c-f94495c746a0",  # Dual Terror (Orange Terror-series head)
+    "Amp_EpiphoneZephyr":    "bd903ed7-82bf-41cc-9834-685b6e3667b5",  # Tube Vintage Combo (50s Supro-style combo)
+    "Amp_GibsonGA88":        "bd903ed7-82bf-41cc-9834-685b6e3667b5",  # Tube Vintage Combo (vintage tube combo)
+    "Amp_GibsonGA8":         "5f4f50a1-d5cb-43be-ad11-084e4ff21ea6",  # '57 Champ (small single-ended combo)
 
     # ── ENGL ──────────────────────────────────────────────────────────────────
     "Amp_EnglE650":     "c936fc9c-1594-48c8-b561-824827452a66",  # E650
@@ -172,6 +185,7 @@ AMP_MAP = {
     # ── DI / direct ───────────────────────────────────────────────────────────
     "DI_Amp_TubePre":    "71a76a9f-cf70-4f59-971f-9864a055523c",  # American Tube Clean 1 (DI placeholder - amp muted)
     "DI_Amp_BassDriver": "71a76a9f-cf70-4f59-971f-9864a055523c",  # Bass DI — same muted placeholder
+    "DI_Amp_MixerPre":   "71a76a9f-cf70-4f59-971f-9864a055523c",  # Mixer preamp DI — same muted placeholder
 
     # ── Bass ──────────────────────────────────────────────────────────────────
     # CH = Ampeg SVT (Classic/Heritage)
@@ -194,6 +208,8 @@ AMP_MAP = {
     "Bass_Amp_CS300B": "18f9d728-018e-4e22-9121-b7f411b2bb77",  # New York B750
     # Named bass amps
     "Bass_Amp_EdenWT550": "18f9d728-018e-4e22-9121-b7f411b2bb77",  # New York B750 (Eden WT550)
+    "Bass_Amp_EdenWT800": "18f9d728-018e-4e22-9121-b7f411b2bb77",  # New York B750 (no Eden in AT5)
+    "Bass_Amp_EdenE300":  "18f9d728-018e-4e22-9121-b7f411b2bb77",  # New York B750 (no Eden in AT5)
     "Amp_Ampeg":          "52f28b23-80e3-4f43-9508-4447258b11c0",  # SVX-CL
     "Amp_AmpegSVTVR":     "2aa0f50f-a6c9-4edd-97c2-df71a24087db",  # SVX-VR
     "Amp_AmpegB15":       "ff274db4-43c3-4fb9-b44d-d04aefd13b28",  # SVX-15R
@@ -1037,23 +1053,23 @@ AT5_AMP_GUIDS = {
     "Solid State Bass Preamp":"ad4ea282-ced9-49d0-9670-e9782ce5c5b7",
     # SE adds (7)
     "American Lead MKIII":    "4af9d89a-c06b-4c8f-b137-af72bc58fded",
-    "Brit 9000":              "cbf3c00f-1234-4abc-8def-0123456789ab",
-    "British Copper 30TB":    "5d235e0d-e30a-4b5c-9876-543210fedcba",
-    "Jazz Amp 120":           "ac08939a-f1e2-4d3c-b5a6-7890abcdef12",
-    "Metal Lead V":           "dcc7c825-a1b2-4c3d-8e4f-5a6b7c8d9e0f",
-    "Metal Lead W":           "dcc7c825-a1b2-4c3d-8e4f-5a6b7c8d9e0f",  # same family as V
+    "Brit 9000":              "cbf3c00f-dc31-4c7f-a409-f7fdbca005a8",
+    "British Copper 30TB":    "5d235e0d-9fd7-429e-b483-6f815281f3d7",
+    "Jazz Amp 120":           "ac08939a-32bf-496c-96ac-5d6c530abf14",
+    "Metal Lead V":           "dcc7c825-76f4-4703-8e1f-b8a12b30b1de",
+    "Metal Lead W":           "802af8da-63c6-4ccf-a4b9-6d13255ef57f",
     "Modern Tube Lead":       "bca11751-a7c1-49f5-846d-031f7eb780f0",
     # AT5 adds (key ones)
     "American Clean MKIII":   "a91067a3-fd80-40a8-be35-0681da5c4f47",
     "Brit Silver":            "3930eb8b-3eda-4079-b86d-7bfd7d4449bc",
-    "German 34":              "4b13e59f-5678-4def-abcd-ef0123456789",
-    "Red Pig":                "e1eed2cf-9012-4567-8901-234567890abc",
-    "Metal Lead T":           "dcc7c825-a1b2-4c3d-8e4f-5a6b7c8d9e0f",  # same family
-    "Vintage Metal Lead":     "1b5961b1-3456-4789-0123-456789abcdef",
-    "VHandcraft 4":           "185e9cde-6789-4012-3456-789012345678",
-    "SilverPlate 50":         "f24511a1-2345-4678-9012-345678901234",
-    "360Bass Preamp":         "ecb60014-7890-4123-4567-890123456789",
-    "New York B750":          "18f9d728-8901-4234-5678-901234567890",
+    "German 34":              "4b13e59f-32b7-4a69-abd0-28d0909cef89",
+    "Red Pig":                "e1eed2cf-6777-46c4-ada2-65df0d7afc46",
+    "Metal Lead T":           "9400d18f-5f72-40ac-aa37-861ba3f18da5",
+    "Vintage Metal Lead":     "1b5961b1-f862-4c8a-9a9b-a920da8c5cc2",
+    "VHandcraft 4":           "185e9cde-535b-42ab-abd1-4fbdb52d4808",
+    "SilverPlate 50":         "f24511a1-8ade-4f93-b781-ade541f0a921",
+    "360Bass Preamp":         "ecb60014-617c-4637-9435-28c1480a0e8f",
+    "New York B750":          "18f9d728-018e-4e22-9121-b7f411b2bb77",
 }
 
 # Backwards compat — CS mode still uses AT5_CS_AMP_GUIDS name
@@ -1064,17 +1080,22 @@ AT5_CS_AMP_GUIDS = {k: v for k, v in AT5_AMP_GUIDS.items()
 
 # ── Cab GUIDs (shared across tiers — just availability differs) ───────────
 AT5_CS_CAB_GUIDS = {
+    # GUIDs by GearInfo name (data/at5_gear.json).  Before 0.8 several of
+    # these pointed at other cabs (e.g. "2x12 Closed Vintage" was the 2x12 JP
+    # Jazz, "4x10 Open Vintage" the '59 Bassman) or were made up (Metal T/V).
     "1x12 Open Vintage":   "bcec521d-c918-4af6-98be-b50b644ac3dd",
-    "1x15 Bass Vintage":   "0c2f1129-e09d-4510-9624-7c8b05f188cf",
-    "2x12 Closed Vintage": "f7902634-12e9-4a2d-9f9a-bcd22781cdab",
-    "4x10 Open Vintage":   "4614704e-7ca2-4736-a750-648fe9033650",
+    "1x15 Bass Vintage":   "55ca6af1-4c70-44e8-957e-4f07cc6861b9",
+    "2x12 Closed Vintage": "8e98245b-fd88-48b4-8951-2d6171c717ce",
+    "4x10 Open Vintage":   "9fa8c924-6543-4085-b55b-58b99aada17e",
     "4x12 Brit 8000":      "7c0b8ce1-cbb4-4e5b-9973-a572143ddb2b",
-    "4x12 Closed Vintage": "c97bc69c-c02d-4cce-b19d-859b72833550",
-    "4x12 Metal T":        "849b3340-5c3b-4395-9e28-ef6dc14f6847",
+    "4x12 Closed Vintage": "445c0a64-c729-4502-b7c4-91e211a7fc21",
+    "4x12 Metal T":        "8b147712-d44d-4564-a40f-fe288110ea6c",   # GearInfo: "4x12 Metal T 1"
     # SE/AT5 add
-    "4x12 Brit 9000":      "7c0b8ce1-cbb4-4e5b-9973-a572143ddb2b",  # closest = Brit 8000 cab
-    "4x12 Closed Modern":  "c97bc69c-c02d-4cce-b19d-859b72833550",  # closest = Closed Vintage
-    "4x12 Metal V":        "849b3340-5c3b-4395-9e28-ef6dc14f6847",  # closest = Metal T
+    "4x12 Brit 9000":      "a54d97da-cd7f-4742-acba-45cb2688c8c9",
+    "4x12 Closed Modern":  "67f95a0d-34e8-4206-b321-3e57c8d1b407",
+    "4x12 Metal V":        "2bca68bf-1cbd-4b37-b6c2-1b40e1902e5c",   # GearInfo: "4x12 Metal V 1"
+    "4x12 Brit Silver":    "c6dc5147-0436-482f-9a8d-070ccea23c46",
+    "4x12 Red Pig":        "6dfb576f-b549-4dd4-ac79-1021bcb53bb2",
 }
 
 # ── Available amp sets per tier ───────────────────────────────────────────
@@ -1362,6 +1383,7 @@ NOISE_GATE_THRESHOLD = -50.0  # dB — sensible default for most guitars
 DI_AMP_KEYS = {
     "DI_Amp_TubePre",
     "DI_Amp_BassDriver",
+    "DI_Amp_MixerPre",      # mixer channel preamp = a DI tone
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1385,8 +1407,8 @@ AT5P_TEMPLATE = """\
     <StompStereo Bypass="0" Mute="1" OutputVolume="1" {null3_attrs}>
 {null3_slots}
     </StompStereo>
-    <StompB1 Bypass="0" Mute="0" OutputVolume="1" {stompb1_attrs}>
-{stompb1_slots}
+    <StompB1 Bypass="0" Mute="0" OutputVolume="1" {null6_attrs}>
+{null6_slots}
     </StompB1>
     <StompB2 Bypass="0" Mute="1" OutputVolume="1" {null6_attrs}>
 {null6_slots}
@@ -1394,7 +1416,7 @@ AT5P_TEMPLATE = """\
     <StompB3 Bypass="0" Mute="1" OutputVolume="1" {null6_attrs}>
 {null6_slots}
     </StompB3>
-    <AmpA Bypass="0" Mute="{amp_muted}" OutputVolume="1" Model="{amp_guid}">
+    <AmpA Bypass="0" Mute="{amp_muted}" OutputVolume="{amp_out_volume}" Model="{amp_guid}">
         <Amp {amp_params}/>
     </AmpA>
     <AmpB Bypass="0" Mute="1" OutputVolume="1" Model="{null_guid}">
@@ -1403,8 +1425,8 @@ AT5P_TEMPLATE = """\
     <AmpC Bypass="0" Mute="1" OutputVolume="1" Model="{null_guid}">
         <Amp />
     </AmpC>
-    <LoopFxA Bypass="0" Mute="0" OutputVolume="1" {null4_attrs}>
-{null4_slots}
+    <LoopFxA Bypass="0" Mute="0" OutputVolume="1" {loopa_attrs}>
+{loopa_slots}
     </LoopFxA>
     <LoopFxB Bypass="0" Mute="0" OutputVolume="1" {null4_attrs}>
 {null4_slots}
@@ -1413,7 +1435,7 @@ AT5P_TEMPLATE = """\
 {null4_slots}
     </LoopFxC>
     <CabA Bypass="0" Mute="{cab_muted}" CabModel="{cab_model}" SpeakerModel0="{speaker_a}" SpeakerModel1="{speaker_a}" SpeakerModel2="{speaker_b}" SpeakerModel3="{speaker_b}" IRDecimation="1">
-        <Cab HighLevel="0.77" RoomType="Large Studio" RoomMicType="Condenser 87" Mic0Model="1e41acc4-85af-4e84-bee4-eabc0be5fef1" Mic1Model="9e444286-cab4-46a4-bfa3-a6d55b3ffcfb" Mic0Angle="0" Mic1Angle="0" Mic0XAxis="-0.0134551" Mic1XAxis="0.164812" Mic0YAxis="-0.213863" Mic1YAxis="0.416267" Mic0Distance="0" Mic1Distance="0.131415" Mic0Speaker="0" Mic1Speaker="1" GUILoadComplete="0" />
+        <Cab {cab_a_inner} />
     </CabA>
     <CabB Bypass="0" Mute="1" CabModel="{cab_model}" SpeakerModel0="{speaker_b}" SpeakerModel1="{speaker_b}" SpeakerModel2="{speaker_b}" SpeakerModel3="{speaker_b}" IRDecimation="1">
         <Cab HighLevel="0.77" RoomType="Large Studio" RoomMicType="Condenser 87" Mic0Model="1e41acc4-85af-4e84-bee4-eabc0be5fef1" Mic1Model="9e444286-cab4-46a4-bfa3-a6d55b3ffcfb" Mic0Angle="0" Mic1Angle="0" Mic0XAxis="0.0134551" Mic1XAxis="0.164812" Mic0YAxis="-0.213863" Mic1YAxis="0.416267" Mic0Distance="0" Mic1Distance="0.131415" Mic0Speaker="0" Mic1Speaker="1" GUILoadComplete="0" />
@@ -1421,12 +1443,12 @@ AT5P_TEMPLATE = """\
     <CabC Bypass="0" Mute="1" CabModel="{cab_model}" SpeakerModel0="{speaker_b}" SpeakerModel1="{speaker_b}" SpeakerModel2="{speaker_b}" SpeakerModel3="{speaker_b}" IRDecimation="1">
         <Cab HighLevel="0.77" RoomType="Large Studio" RoomMicType="Condenser 87" Mic0Model="1e41acc4-85af-4e84-bee4-eabc0be5fef1" Mic1Model="9e444286-cab4-46a4-bfa3-a6d55b3ffcfb" Mic0Angle="0" Mic1Angle="0" Mic0XAxis="0.0134551" Mic1XAxis="0.164812" Mic0YAxis="-0.213863" Mic1YAxis="0.416267" Mic0Distance="0" Mic1Distance="0.131415" Mic0Speaker="0" Mic1Speaker="1" GUILoadComplete="0" />
     </CabC>
-    <Studio Bypass="0" Mute="0" OutputVolume="1" OutputPan="0.5" DI_Level="-3" DI_Pan="0.5" DI_Mute="1" DI_Solo="0" DI_Phase="0" DI_PhaseDelay="0" Cab1_Mic1_Level="-6" Cab1_Mic1_Pan="0" Cab1_Mic1_Mute="0" Cab1_Mic1_Solo="0" Cab1_Mic1_Phase="0" Cab1_Mic2_Level="-6" Cab1_Mic2_Pan="0" Cab1_Mic2_Mute="0" Cab1_Mic2_Solo="0" Cab1_Mic2_Phase="0" Cab1_Room_Level="-34.5241" Cab1_Room_Width="50" Cab1_Room_Mute="0" Cab1_Room_Solo="0" Cab1_Room_Phase="0" Cab1_Bus_Level="0" Cab1_Bus_Pan="0.5" Cab1_Bus_Mute="0" Cab1_Bus_Solo="0" Cab1_Bus_Phase="0" Cab2_Mic1_Level="-6" Cab2_Mic1_Pan="0" Cab2_Mic1_Mute="0" Cab2_Mic1_Solo="0" Cab2_Mic1_Phase="0" Cab2_Mic2_Level="-6" Cab2_Mic2_Pan="0" Cab2_Mic2_Mute="0" Cab2_Mic2_Solo="0" Cab2_Mic2_Phase="0" Cab2_Room_Level="-34.5241" Cab2_Room_Width="50" Cab2_Room_Mute="0" Cab2_Room_Solo="0" Cab2_Room_Phase="0" Cab2_Bus_Level="0" Cab2_Bus_Pan="0.5" Cab2_Bus_Mute="0" Cab2_Bus_Solo="0" Cab2_Bus_Phase="0" Cab3_Mic1_Level="-6" Cab3_Mic1_Pan="0" Cab3_Mic1_Mute="0" Cab3_Mic1_Solo="0" Cab3_Mic1_Phase="0" Cab3_Mic2_Level="-6" Cab3_Mic2_Pan="0" Cab3_Mic2_Mute="0" Cab3_Mic2_Solo="0" Cab3_Mic2_Phase="0" Cab3_Room_Level="-34.5241" Cab3_Room_Width="50" Cab3_Room_Mute="0" Cab3_Room_Solo="0" Cab3_Room_Phase="0" Cab3_Bus_Level="0" Cab3_Bus_Pan="0.5" Cab3_Bus_Mute="0" Cab3_Bus_Solo="0" Cab3_Bus_Phase="0" Cab1_Leslie_Horn_Level="-6" Cab1_Leslie_Horn_Width="100" Cab1_Leslie_Horn_Mute="0" Cab1_Leslie_Horn_Solo="0" Cab1_Leslie_Horn_Phase="0" Cab1_Leslie_Drum_Level="-6" Cab1_Leslie_Drum_Width="100" Cab1_Leslie_Drum_Mute="0" Cab1_Leslie_Drum_Solo="0" Cab1_Leslie_Drum_Phase="0" Cab2_Leslie_Horn_Level="-6" Cab2_Leslie_Horn_Width="100" Cab2_Leslie_Horn_Mute="0" Cab2_Leslie_Horn_Solo="0" Cab2_Leslie_Horn_Phase="0" Cab2_Leslie_Drum_Level="-6" Cab2_Leslie_Drum_Width="100" Cab2_Leslie_Drum_Mute="0" Cab2_Leslie_Drum_Solo="0" Cab2_Leslie_Drum_Phase="0" Cab3_Leslie_Horn_Level="-6" Cab3_Leslie_Horn_Width="100" Cab3_Leslie_Horn_Mute="0" Cab3_Leslie_Horn_Solo="0" Cab3_Leslie_Horn_Phase="0" Cab3_Leslie_Drum_Level="-6" Cab3_Leslie_Drum_Width="100" Cab3_Leslie_Drum_Mute="0" Cab3_Leslie_Drum_Solo="0" Cab3_Leslie_Drum_Phase="0" />
-    <RackA Bypass="0" Mute="0" OutputVolume="1" {racka_attrs}>
-{racka_slots}
+    <Studio Bypass="0" Mute="0" OutputVolume="1" OutputPan="0.5" DI_Level="-3" DI_Pan="0.5" DI_Mute="1" DI_Solo="0" DI_Phase="0" DI_PhaseDelay="0" Cab1_Mic1_Level="-6" Cab1_Mic1_Pan="0" Cab1_Mic1_Mute="0" Cab1_Mic1_Solo="0" Cab1_Mic1_Phase="0" Cab1_Mic2_Level="-6" Cab1_Mic2_Pan="0" Cab1_Mic2_Mute="{cab1_mic2_mute}" Cab1_Mic2_Solo="0" Cab1_Mic2_Phase="0" Cab1_Room_Level="-34.5241" Cab1_Room_Width="50" Cab1_Room_Mute="0" Cab1_Room_Solo="0" Cab1_Room_Phase="0" Cab1_Bus_Level="0" Cab1_Bus_Pan="0.5" Cab1_Bus_Mute="0" Cab1_Bus_Solo="0" Cab1_Bus_Phase="0" Cab2_Mic1_Level="-6" Cab2_Mic1_Pan="0" Cab2_Mic1_Mute="0" Cab2_Mic1_Solo="0" Cab2_Mic1_Phase="0" Cab2_Mic2_Level="-6" Cab2_Mic2_Pan="0" Cab2_Mic2_Mute="0" Cab2_Mic2_Solo="0" Cab2_Mic2_Phase="0" Cab2_Room_Level="-34.5241" Cab2_Room_Width="50" Cab2_Room_Mute="0" Cab2_Room_Solo="0" Cab2_Room_Phase="0" Cab2_Bus_Level="0" Cab2_Bus_Pan="0.5" Cab2_Bus_Mute="0" Cab2_Bus_Solo="0" Cab2_Bus_Phase="0" Cab3_Mic1_Level="-6" Cab3_Mic1_Pan="0" Cab3_Mic1_Mute="0" Cab3_Mic1_Solo="0" Cab3_Mic1_Phase="0" Cab3_Mic2_Level="-6" Cab3_Mic2_Pan="0" Cab3_Mic2_Mute="0" Cab3_Mic2_Solo="0" Cab3_Mic2_Phase="0" Cab3_Room_Level="-34.5241" Cab3_Room_Width="50" Cab3_Room_Mute="0" Cab3_Room_Solo="0" Cab3_Room_Phase="0" Cab3_Bus_Level="0" Cab3_Bus_Pan="0.5" Cab3_Bus_Mute="0" Cab3_Bus_Solo="0" Cab3_Bus_Phase="0" Cab1_Leslie_Horn_Level="-6" Cab1_Leslie_Horn_Width="100" Cab1_Leslie_Horn_Mute="0" Cab1_Leslie_Horn_Solo="0" Cab1_Leslie_Horn_Phase="0" Cab1_Leslie_Drum_Level="-6" Cab1_Leslie_Drum_Width="100" Cab1_Leslie_Drum_Mute="0" Cab1_Leslie_Drum_Solo="0" Cab1_Leslie_Drum_Phase="0" Cab2_Leslie_Horn_Level="-6" Cab2_Leslie_Horn_Width="100" Cab2_Leslie_Horn_Mute="0" Cab2_Leslie_Horn_Solo="0" Cab2_Leslie_Horn_Phase="0" Cab2_Leslie_Drum_Level="-6" Cab2_Leslie_Drum_Width="100" Cab2_Leslie_Drum_Mute="0" Cab2_Leslie_Drum_Solo="0" Cab2_Leslie_Drum_Phase="0" Cab3_Leslie_Horn_Level="-6" Cab3_Leslie_Horn_Width="100" Cab3_Leslie_Horn_Mute="0" Cab3_Leslie_Horn_Solo="0" Cab3_Leslie_Horn_Phase="0" Cab3_Leslie_Drum_Level="-6" Cab3_Leslie_Drum_Width="100" Cab3_Leslie_Drum_Mute="0" Cab3_Leslie_Drum_Solo="0" Cab3_Leslie_Drum_Phase="0" />
+    <RackA Bypass="0" Mute="0" OutputVolume="1" {null2_attrs}>
+{null2_slots}
     </RackA>
-    <RackB Bypass="0" Mute="0" OutputVolume="1" {rackb_attrs}>
-{rackb_slots}
+    <RackB Bypass="0" Mute="0" OutputVolume="1" {null2_attrs}>
+{null2_slots}
     </RackB>
     <RackC Bypass="0" Mute="1" OutputVolume="1" {null2_attrs}>
 {null2_slots}
@@ -1434,12 +1456,12 @@ AT5P_TEMPLATE = """\
     <RackDI Bypass="0" Mute="0" OutputVolume="1" {null2_attrs}>
 {null2_slots}
     </RackDI>
-    <RackMaster Bypass="0" Mute="0" OutputVolume="1" {null6_attrs}>
-{null6_slots}
+    <RackMaster Bypass="0" Mute="0" OutputVolume="1" {rackm_attrs}>
+{rackm_slots}
     </RackMaster>
     <Output Output="1" />
     <MidiAssignments />
-    <MetaInfo Description="{description}" Style="None" SoundCharacter="None" Instrument="None" Body="None" PickUpPosition="None" Artist="" Band="" Song="{song}" Album="" SongStructureElement="None" KeyWords="" Type="None" />
+    <MetaInfo Description="{description}" Style="None" SoundCharacter="None" Instrument="None" Body="None" PickUpPosition="None" Artist="" Band="" Song="{song}" Album="" SongStructureElement="None" KeyWords="{keywords}" Type="None" />
 </Preset>
 """
 
@@ -1474,11 +1496,91 @@ def lookup_amp(rs_key, free_mode=False, tier="max"):
             return v, False
     return None, False
 
+_RS_MIC_POSITIONS = ("Cone", "Edge", "OffAxis")
+
+
+def _cab_base(rs_key: str) -> str:
+    """Cab_Marshall1960TV_57_Edge -> Cab_Marshall1960TV (mic + position stripped)."""
+    parts = (rs_key or "").split("_")
+    if len(parts) >= 4 and parts[-1] in _RS_MIC_POSITIONS:
+        return "_".join(parts[:-2])
+    return rs_key or ""
+
+
+_CAB_BY_BASE = None
+
+
+def _cab_by_base() -> dict:
+    global _CAB_BY_BASE
+    if _CAB_BY_BASE is None:
+        _CAB_BY_BASE = {}
+        for k, v in CAB_ENCLOSURE_MAP.items():
+            _CAB_BY_BASE.setdefault(_cab_base(k), v)
+    return _CAB_BY_BASE
+
+
+# Speaker configuration -> AmpliTube cab (by GearInfo name).  Used when a
+# Rocksmith cab has no entry: its key encodes count x size (TW112C = 1x12,
+# CH410BC = 4x10 bass, AT1150BC = 1x15 bass, EdenD610XST = 6x10 bass).
+_GUITAR_CAB_BY_SIZE = {
+    (1, 8): "1x8 '57 Custom Champ", (1, 10): "1x12 Open Vintage", (1, 12): "1x12 Open Vintage",
+    (1, 15): "1x15 '57 Custom Pro-Amp", (2, 10): "2x12 Open Vintage", (2, 12): "2x12 Open Vintage",
+    (3, 10): "3x10 '57 Bandmaster", (4, 10): "4x10 Open Vintage", (4, 12): "4x12 Closed Vintage",
+}
+_BASS_CAB_BY_SIZE = {
+    (1, 10): "4x10+tw Bass", (2, 10): "4x10+tw Bass", (3, 10): "4x10+tw Bass", (4, 10): "4x10+tw Bass",
+    (6, 10): "8x10 OBC 810", (8, 10): "8x10 OBC 810", (1, 12): "1x15 Bass Vintage", (2, 12): "SVX-212 AV",
+    (1, 15): "1x15 Bass Vintage", (2, 15): "2x15 Closed B J130", (4, 15): "2x15 Closed B J130",
+    (1, 18): "1x18 Horn Bass",
+}
+
+
+# Cabinets with no CAB_ENCLOSURE_MAP entry but a clear AmpliTube match
+# (by GearInfo name).  The novelty "cabs" (jukebox, radio...) are small
+# full-range speakers: the smallest AmpliTube guitar cab is the closest.
+_CAB_BASE_EXTRA = {
+    "Cab_OrangePPC212OB": "2x12 PPC OB",
+    "Bass_Cab_OrangeOBC115": "1x15 OBC 115",
+    "Cab_OrangeJimmyBean": "4x12 PPC 412",
+    "Cab_Marshall1936": "2x12 Closed Vintage",       # Marshall 1936 2x12 (GearInfo keyword: Marshall)
+    "Bass_Cab_EdenD410XST": "4x10 NY410",
+    "Cab_JukeBox": "1x8 '57 Custom Champ", "Cab_BoomBox": "1x8 '57 Custom Champ",
+    "Cab_Audiophile": "1x8 '57 Custom Champ", "Cab_VintageHiFi": "1x8 '57 Custom Champ",
+    "Cab_CabinetRadio": "1x8 '57 Custom Champ", "Cab_Gramophone": "1x8 '57 Custom Champ",
+}
+
+
+def _cab_by_size(rs_key: str):
+    base = _cab_base(rs_key)
+    if base in _CAB_BASE_EXTRA:
+        return TP.at5_guid(_CAB_BASE_EXTRA[base], "cab")
+    parts = base.split("_")
+    model = parts[-1] if parts else ""
+    is_bass = base.startswith("Bass_") or model.endswith("BC")
+    m = _re.search(r"(\d{2,4})", model)
+    if not m:
+        return None
+    d = m.group(1)
+    count, size = (1, int(d)) if len(d) == 2 else (int(d[0]), int(d[1:3]))
+    table = _BASS_CAB_BY_SIZE if is_bass else _GUITAR_CAB_BY_SIZE
+    name = table.get((count, size))
+    if name is None:   # nearest count with the same speaker size
+        same = sorted((abs(c - count), n) for (c, s), n in table.items() if s == size)
+        name = same[0][1] if same else None
+    return TP.at5_guid(name, "cab") if name else None
+
+
 def lookup_cab(rs_key, free_mode=False, tier="max"):
     if free_mode or tier not in ("max",):
         effective_tier = "cs" if free_mode and tier == "max" else tier
         return _cab_to_tier_guid(rs_key, effective_tier), DEFAULT_SPEAKER_A
     enclosure = CAB_ENCLOSURE_MAP.get(rs_key)
+    if not enclosure:
+        # Same cabinet, other mic/position (the map lists per mic position)
+        enclosure = _cab_by_base().get(_cab_base(rs_key))
+    if not enclosure:
+        # Speaker configuration encoded in the key (CH410BC = 4x10 bass cab)
+        enclosure = _cab_by_size(rs_key)
     if not enclosure:
         # Fuzzy match
         rs_lower = rs_key.lower()
@@ -1573,8 +1675,9 @@ def apply_level_policy(xml_text: str, output_db: float = DEFAULT_OUTPUT_DB) -> s
 
 
 def rs_knob_to_at5(rs_key, rs_value, amp_guid=""):
-    """Convert RS knob key+value (0-100) to AT5 param name+value (0-10).
-    Appends the amp-specific DSP suffix if known."""
+    """Legacy RS amp knob -> AT5 param (value / 10, guessed name).
+    Superseded by tone_params.convert_amp_knobs (real parameter names from
+    AmpliTube's own presets, range-aware); kept for callers outside this file."""
     suffix = rs_key.split("_")[-1]
     at5_name = KNOB_NAME_MAP.get(suffix, suffix)
     # Append model suffix if known
@@ -1583,219 +1686,330 @@ def rs_knob_to_at5(rs_key, rs_value, amp_guid=""):
         at5_name = f"{at5_name}_{amp_suffix}"
     return at5_name, rs_value / 10.0
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KNOB CONVERSION ENGINE (tone_params.py, loaded by path like this module)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_tone_params():
+    import importlib.util
+    name = "at5_tone_tone_params"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().with_name("tone_params.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+TP = _load_tone_params()
+
+# ── free (Custom Shop) tier effects ──────────────────────────────────────────
+# Taken from what AmpliTube's own "AmpliTube 5 CS" factory presets load.
+# (_effect_to_cs_guid referenced these names but they were never defined, so
+# free mode raised NameError on the first effect.)
+AT5_CS_NULL_EFFECT = None
+AT5_CS_STOMP_MAP = {
+    "wah":       TP.at5_guid("Wah", "stomp"),
+    "reverb":    TP.at5_guid("Digital Reverb", "rack"),
+    "delay":     TP.at5_guid("Digital Delay", "rack"),
+    "chorus":    TP.at5_guid("Digital Chorus", "rack"),
+    "flanger":   TP.at5_guid("Digital Chorus", "rack"),   # CS has no flanger in its presets
+    "overdrive": TP.at5_guid("Diode Overdrive", "stomp"),
+    "compress":  TP.at5_guid("Compressor", "stomp"),
+    "noisegate": TP.at5_guid("Noise Gate", "stomp"),
+    "trem":      TP.at5_guid("Opto Tremolo", "stomp"),
+    "eq":        TP.at5_guid("7 Band Graphic", "stomp"),
+}
+AT5_CS_EFFECT_GUIDS = {g for g in AT5_CS_STOMP_MAP.values() if g} | {
+    g for g in (TP.at5_guid("GraphicEQ", "rack"), TP.at5_guid("Parametric EQ 3", "rack"),
+                TP.at5_guid("Tube Compressor", "rack"), TP.at5_guid("Chorus", "stomp")) if g}
+
+
+def effect_guid_for(rs_key: str, free_mode: bool = False):
+    """AmpliTube model for a Rocksmith pedal/rack.  The tone_params recipe
+    target (chosen so every Rocksmith control has somewhere to go) wins; in
+    free mode it is used only when the free tier has it."""
+    target = TP.recipe_target_guid(rs_key)
+    if free_mode:
+        if target in AT5_CS_EFFECT_GUIDS:
+            return target
+        return _effect_to_cs_guid(rs_key)
+    return target or lookup_effect(rs_key)
+
+
+def _knob_values(gear_slot) -> dict:
+    """Knob dict from any GearList slot shape (KnobValues / Knobs / list)."""
+    if not isinstance(gear_slot, dict):
+        return {}
+    kv = gear_slot.get("KnobValues")
+    if kv is None:
+        kv = gear_slot.get("Knobs")
+    if isinstance(kv, list):
+        kv = {k["Key"]: k["Value"] for k in kv if isinstance(k, dict) and "Key" in k and "Value" in k}
+    return kv if isinstance(kv, dict) else {}
+
+
+def _xml_attr(v) -> str:
+    return (str(v).replace("&", "&amp;").replace('"', "&quot;")
+            .replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _slot_xml(i: int, conv) -> str:
+    if conv is None:
+        return f"        <Slot{i} />"
+    attrs = "".join(f' {k}="{_xml_attr(v)}"' for k, v in conv.attrs.items())
+    return f'        <Slot{i} Bypass="0"{attrs} />'
+
+
+def _noise_gate_slot():
+    """The plugin's optional global noise gate, with real settings."""
+    spec = TP.at5_param_specs(NOISE_GATE_GUID)
+    attrs = {"Threshold": TP.encode(spec.get("Threshold", ("thresh", -100, 0)), NOISE_GATE_THRESHOLD),
+             "Release": "100", "Depth": "-60"}
+    return TP.Converted(NOISE_GATE_GUID, attrs, [], "stomp")
+
+
+def build_effect_section(gear_slots, n_total, free_mode=False, noise_gate=False,
+                         warnings=None, label="effect", lead=None):
+    """Stomp/rack section attrs + slot XML for a list of Rocksmith gear slots.
+    Every effect carries its converted parameter values; notes about knobs
+    that could only be approximated go to `warnings`.  `lead`: already
+    converted effects placed first (e.g. the amp's rebuilt EQ)."""
+    warnings = warnings if warnings is not None else []
+    convs = [_noise_gate_slot()] if noise_gate else []
+    convs.extend(c for c in (lead or []) if c is not None)
+    for slot in gear_slots:
+        rs_key = slot.get("Key", "") if isinstance(slot, dict) else ""
+        if not rs_key:
+            continue
+        guid = effect_guid_for(rs_key, free_mode=free_mode)
+        if not guid or guid == NULL_GUID:
+            warnings.append(f"Unmapped {label} '{rs_key}' -> empty slot")
+            continue
+        conv = TP.convert_effect(rs_key, _knob_values(slot), guid)
+        warnings.extend(conv.notes)
+        convs.append(conv)
+    if len(convs) > n_total:
+        dropped = [TP.at5_name(c.guid) for c in convs[n_total:]]
+        warnings.append(f"{label}: {len(convs)} effects for {n_total} slots — dropped {dropped}")
+        convs = convs[:n_total]
+    attrs = " ".join(f'Stomp{i}="{convs[i].guid if i < len(convs) else NULL_GUID}"' for i in range(n_total))
+    slots = "\n".join(_slot_xml(i, convs[i] if i < len(convs) else None) for i in range(n_total))
+    return attrs, slots
+
+
 def build_stomp_section(gear_slots, n_total=6, free_mode=False, noise_gate=False):
-    """
-    Build Stomp attrs and Slot elements for a StompX section.
-    gear_slots: list of RS gear dicts (may be empty/None)
-    Returns (attrs_str, slots_str)
-    """
-    guids = []
-    slot_lines = []
-    # If global noise gate is on, prepend it and shift everything down
-    if noise_gate:
-        effective_slots = gear_slots[:n_total - 1]  # shift down, drop last if full
-        if len(gear_slots) >= n_total:
-            pass  # last slot dropped — log handled by caller
-        gate_slot = [{"Key": "__NOISE_GATE__"}]  # sentinel key
-        gear_slots = gate_slot + list(effective_slots)
-    for i in range(n_total):
-        slot_data = gear_slots[i] if i < len(gear_slots) else {}
-        rs_key = slot_data.get('Key', '') if slot_data else ''
-        if rs_key == "__NOISE_GATE__":
-            effect_guid = NOISE_GATE_GUID
-        else:
-            effect_guid = lookup_effect(rs_key, free_mode=free_mode) if rs_key else None
+    """Compatibility wrapper (attrs, slots) — see build_effect_section."""
+    return build_effect_section(gear_slots, n_total, free_mode=free_mode, noise_gate=noise_gate)
 
-        if effect_guid:
-            guids.append(effect_guid)
-            # TODO: add knob values to slot when stomp param format is known
-            slot_lines.append(f"        <Slot{i} Bypass=\"0\" />")
-        else:
-            guids.append(NULL_GUID)
-            slot_lines.append(f"        <Slot{i} />")
-
-    attrs = " ".join(f'Stomp{i}="{g}"' for i, g in enumerate(guids))
-    return attrs, "\n".join(slot_lines)
 
 def build_rack_section(rack_slots, free_mode=False):
-    """
-    Build RackX attrs and Slot elements (2 slots per rack section).
-    rack_slots: list of up to 2 RS rack gear dicts
-    Returns (attrs_str, slots_str)
-    """
-    guids = []
-    slot_lines = []
-    for i in range(2):
-        slot_data = rack_slots[i] if i < len(rack_slots) else {}
-        rs_key = slot_data.get('Key', '') if slot_data else ''
-        effect_guid = lookup_effect(rs_key, free_mode=free_mode) if rs_key else None
+    """Compatibility wrapper: 2-slot rack section."""
+    return build_effect_section(rack_slots, 2, free_mode=free_mode, label="rack")
 
-        if effect_guid:
-            guids.append(effect_guid)
-            slot_lines.append(f"        <Slot{i} Bypass=\"0\" />")
-        else:
-            guids.append(NULL_GUID)
-            slot_lines.append(f"        <Slot{i} />")
 
-    attrs = " ".join(f'Stomp{i}="{g}"' for i, g in enumerate(guids))
-    return attrs, "\n".join(slot_lines)
+# ── cabinet mic ──────────────────────────────────────────────────────────────
+# The template's historical two-mic setup (SM57 + U87).  When the Rocksmith
+# cab key names its mic and position, mic 0 becomes that mic at that position
+# and mic 1 is muted, as Rocksmith's cab IRs are single-mic captures.
+CAB_INNER_DEFAULT = {
+    "HighLevel": "0.77", "RoomType": "Large Studio", "RoomMicType": "Condenser 87",
+    "Mic0Model": "1e41acc4-85af-4e84-bee4-eabc0be5fef1", "Mic1Model": "9e444286-cab4-46a4-bfa3-a6d55b3ffcfb",
+    "Mic0Angle": "0", "Mic1Angle": "0", "Mic0XAxis": "-0.0134551", "Mic1XAxis": "0.164812",
+    "Mic0YAxis": "-0.213863", "Mic1YAxis": "0.416267", "Mic0Distance": "0", "Mic1Distance": "0.131415",
+    "Mic0Speaker": "0", "Mic1Speaker": "1", "GUILoadComplete": "0",
+}
+
+
+def cab_inner_attrs(rs_cab_key: str, warnings=None):
+    """(Cab element attribute string, Studio Cab1_Mic2_Mute) for CabA."""
+    inner = dict(CAB_INNER_DEFAULT)
+    mic2_mute = "0"
+    mic, notes = TP.cab_mic(rs_cab_key)
+    if warnings is not None:
+        warnings.extend(notes)
+    if mic:
+        inner.update(mic)
+        inner["Mic1Mute"] = "1"
+        mic2_mute = "1"
+    return " ".join(f'{k}="{_xml_attr(v)}"' for k, v in inner.items()), mic2_mute
+
+
+def template_defaults(**over) -> dict:
+    """Every AT5P_TEMPLATE field with an empty/neutral value; callers override.
+    routes.py uses this for its empty live-slot presets."""
+    d = dict(
+        guid=str(uuid.uuid4()), amp_guid=NULL_GUID, amp_muted="1", amp_params="", amp_out_volume="1",
+        null_guid=NULL_GUID, cab_model=DEFAULT_CAB_4x12, cab_muted="1",
+        speaker_a=DEFAULT_SPEAKER_A.replace("-", ""), speaker_b=DEFAULT_SPEAKER_B.replace("-", ""),
+        cab_a_inner=" ".join(f'{k}="{v}"' for k, v in CAB_INNER_DEFAULT.items()), cab1_mic2_mute="0",
+        stompa1_attrs=null_attrs(6), stompa1_slots=null_slots(6),
+        loopa_attrs=null_attrs(4), loopa_slots=null_slots(4),
+        rackm_attrs=null_attrs(6), rackm_slots=null_slots(6),
+        null2_attrs=null_attrs(2), null2_slots=null_slots(2),
+        null3_attrs=null_attrs(3), null3_slots=null_slots(3),
+        null4_attrs=null_attrs(4), null4_slots=null_slots(4),
+        null6_attrs=null_attrs(6), null6_slots=null_slots(6),
+        description="", song="", di_before_amp="0", keywords=CONVERTER_MARK,
+    )
+    d.update(over)
+    return d
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN CONVERSION
 # ─────────────────────────────────────────────────────────────────────────────
+#
+# Where things go (AmpliTube "single path" chain, Chain11 — manual §3.7:
+# 12 effects before the amp, 4 in the amp's loop FX, 2 after each cab,
+# 6 on the master bus):
+#   PrePedal1-4  -> StompA1  (before the amp)   [+ optional noise gate first]
+#   PostPedal1-4 -> LoopFxA  (after the amp, before the cab — Rocksmith's
+#                             "loop" pedals are post-amp; until 0.8 they were
+#                             written to StompB1, which is BEFORE the amp)
+#   Rack1-4      -> RackMaster (master bus; RackB follows the muted cab B)
 
-def convert_tone(tone_path: Path, output_dir: Path, free_mode: bool = False, tier: str = "max", noise_gate: bool = False):
-    try:
-        tone = json.loads(tone_path.read_text(encoding='utf-8'))
-    except Exception as e:
-        print(f"  ERROR reading {tone_path.name}: {e}")
-        return None
-
-    td   = tone.get('toneData', {})
-    gear = td.get('GearList', {})
-    tone_name = td.get('Name', tone_path.stem)
-    tone_key  = td.get('Key',  tone_name)
-
+def build_preset(tone_key: str, tone_name: str, gear: dict, free_mode: bool = False,
+                 tier: str = "max", noise_gate: bool = False, volume=None):
+    """Return (preset XML, warnings) for one Rocksmith GearList."""
     warnings = []
+    gear = gear or {}
 
-    # ── Amp ───────────────────────────────────────────────────────────────────
-    amp_data    = gear.get('Amp', {})
-    rs_amp_key  = amp_data.get('Key', '')
+    # ── Amp ──────────────────────────────────────────────────────────────
+    amp_data = gear.get("Amp") or {}
+    rs_amp_key = amp_data.get("Key", "") if isinstance(amp_data, dict) else ""
     effective_tier = "cs" if free_mode and tier == "max" else tier
     amp_guid, amp_exact = lookup_amp(rs_amp_key, free_mode=free_mode, tier=effective_tier)
-
     if not amp_guid:
         warnings.append(f"Unknown amp '{rs_amp_key}' -> using null amp")
         amp_guid = NULL_GUID
     elif not amp_exact and not free_mode:
         warnings.append(f"Fuzzy amp match for '{rs_amp_key}'")
 
-    knob_values = amp_data.get('KnobValues', {})
-    amp_params_parts = []
-    for rs_k, rs_v in knob_values.items():
-        at5_name, at5_val = rs_knob_to_at5(rs_k, rs_v, amp_guid)
-        amp_params_parts.append(f'{at5_name}="{at5_val:.4f}"')
-    amp_params_str = " ".join(amp_params_parts)
+    amp_attrs, amp_eq, di_conv = {}, None, None
+    if rs_amp_key in DI_AMP_KEYS:
+        # DI tone: the amp is muted; the Rocksmith DI preamp (gain + EQ)
+        # becomes the first pre-amp effect so its settings still apply.
+        di_guid = TP.recipe_target_guid(rs_amp_key)
+        if di_guid:
+            di_conv = TP.convert_effect(rs_amp_key, _knob_values(amp_data), di_guid)
+            warnings.extend(di_conv.notes)
+    elif amp_guid != NULL_GUID:
+        amp = TP.convert_amp(rs_amp_key, _knob_values(amp_data), amp_guid, AMP_KNOB_MAP.get(amp_guid))
+        amp_attrs, amp_eq = amp.attrs, TP.amp_eq_effect(amp.eq_bands)
+        warnings.extend(amp.notes)
+    amp_params_str = " ".join(f'{k}="{_xml_attr(v)}"' for k, v in amp_attrs.items())
 
-    # ── Cabinet ───────────────────────────────────────────────────────────────
-    cab_data   = gear.get('Cabinet', {})
-    rs_cab_key = cab_data.get('Key', '')
-    is_di_tone = rs_amp_key in DI_AMP_KEYS
-
-    if is_di_tone:
-        # DI tones have no amp or cabinet — use a clean amp GUID (muted) so AT5 validates
-        # amp_guid already set from AMP_MAP lookup above (American Tube Clean 1)
+    # ── Cabinet ──────────────────────────────────────────────────────────
+    cab_data = gear.get("Cabinet") or {}
+    rs_cab_key = cab_data.get("Key", "") if isinstance(cab_data, dict) else str(cab_data)
+    if rs_amp_key in DI_AMP_KEYS:
+        # DI tones have no amp or cabinet: amp muted, signal via DIBeforeAmp
         amp_params_str = ""
-        cab_model = DEFAULT_CAB_4x12
-        speaker_a = DEFAULT_SPEAKER_A
-        speaker_b = DEFAULT_SPEAKER_B
-        cab_muted = "0"  # unmute cab so DI signal reaches output via DIBeforeAmp
-        amp_muted = "1"  # mute amp — signal bypasses via DIBeforeAmp="1"
-        di_before_amp = "1"
+        amp_muted, di_before_amp, cab_muted = "1", "1", "0"
+        cab_model, speaker_a, speaker_b = DEFAULT_CAB_4x12, DEFAULT_SPEAKER_A, DEFAULT_SPEAKER_B
+        cab_inner, mic2_mute = cab_inner_attrs("")
     else:
-        amp_muted = "0"
-        di_before_amp = "0"
-        cab_model, speaker_a = lookup_cab(rs_cab_key, free_mode=free_mode)
-        speaker_b  = DEFAULT_SPEAKER_B
-        cab_muted  = "0"
+        amp_muted, di_before_amp, cab_muted = "0", "0", "0"
+        cab_model, speaker_a = lookup_cab(rs_cab_key, free_mode=free_mode, tier=effective_tier)
+        speaker_b = DEFAULT_SPEAKER_B
         if rs_cab_key and rs_cab_key not in CAB_ENCLOSURE_MAP:
-            warnings.append(f"Fuzzy/default cab match for '{rs_cab_key}'"  )
+            if _cab_base(rs_cab_key) in _cab_by_base():
+                pass                                   # same cabinet, other mic position
+            elif _cab_by_size(rs_cab_key):
+                warnings.append(f"Cab '{rs_cab_key}' has no direct mapping: matched by speaker "
+                                f"configuration -> {TP.at5_name(cab_model)}. VERIFY.")
+            else:
+                warnings.append(f"Fuzzy/default cab match for '{rs_cab_key}' -> {TP.at5_name(cab_model)}")
+        cab_inner, mic2_mute = cab_inner_attrs(rs_cab_key, warnings)
 
-    # ── Pre-amp stomps (PrePedal1/2 -> StompA1 slots 0-1) ────────────────────
-    pre_pedals = [gear.get('PrePedal1', {}), gear.get('PrePedal2', {})]
-    stompa1_attrs, stompa1_slots = build_stomp_section(pre_pedals, n_total=6, free_mode=free_mode, noise_gate=noise_gate)
-    for p in pre_pedals:
-        k = p.get('Key', '') if p else ''
-        if k and not lookup_effect(k):
-            warnings.append(f"Unmapped pre-pedal '{k}' -> empty slot")
+    # ── Effects ──────────────────────────────────────────────────────────
+    pre = [gear.get(f"PrePedal{i}") for i in range(1, 5)]
+    post = [gear.get(f"PostPedal{i}") for i in range(1, 5)]
+    racks = [gear.get(f"Rack{i}") for i in range(1, 5)]
+    stompa1_attrs, stompa1_slots = build_effect_section(pre, 6, free_mode, noise_gate, warnings, "pre-pedal",
+                                                        lead=[di_conv])
+    loopa_attrs, loopa_slots = build_effect_section(post, 4, free_mode, False, warnings, "post-pedal",
+                                                    lead=[amp_eq] if rs_amp_key not in DI_AMP_KEYS else None)
+    rackm_attrs, rackm_slots = build_effect_section(racks, 6, free_mode, False, warnings, "rack")
+    for extra in gear:
+        if extra not in ("Amp", "Cabinet") and not extra.startswith(("PrePedal", "PostPedal", "Rack")):
+            warnings.append(f"GearList slot '{extra}' has no AmpliTube equivalent — not converted.")
 
-    # ── Post stomps (PostPedal1/2 -> StompB1 slots 0-1) ──────────────────────
-    post_pedals = [gear.get('PostPedal1', {}), gear.get('PostPedal2', {})]
-    stompb1_attrs, stompb1_slots = build_stomp_section(post_pedals, n_total=6, free_mode=free_mode)
-    for p in post_pedals:
-        k = p.get('Key', '') if p else ''
-        if k and not lookup_effect(k):
-            warnings.append(f"Unmapped post-pedal '{k}' -> empty slot")
+    # ── Tone volume (Rocksmith per-tone level) -> amp section OutputVolume ──
+    amp_out_volume = TP.tone_volume_gain(volume) or "1"
 
-    # ── Rack effects (Rack1-4 -> RackA slot0/1, RackB slot0/1) ───────────────
-    racks = [gear.get(f'Rack{i}', {}) for i in range(1, 5)]
-    racka_attrs, racka_slots = build_rack_section(racks[0:2], free_mode=free_mode)
-    rackb_attrs, rackb_slots = build_rack_section(racks[2:4], free_mode=free_mode)
-    for r in racks:
-        k = r.get('Key', '') if r else ''
-        if k and not lookup_effect(k):
-            warnings.append(f"Unmapped rack '{k}' -> empty slot")
+    xml = AT5P_TEMPLATE.format(**template_defaults(
+        amp_guid=amp_guid, amp_muted=amp_muted, amp_params=amp_params_str, amp_out_volume=amp_out_volume,
+        cab_model=cab_model, cab_muted=cab_muted,
+        speaker_a=speaker_a.replace("-", ""), speaker_b=speaker_b.replace("-", ""),
+        cab_a_inner=cab_inner, cab1_mic2_mute=mic2_mute,
+        stompa1_attrs=stompa1_attrs, stompa1_slots=stompa1_slots,
+        loopa_attrs=loopa_attrs, loopa_slots=loopa_slots,
+        rackm_attrs=rackm_attrs, rackm_slots=rackm_slots,
+        description=_xml_attr(tone_key), song=_xml_attr(tone_name), di_before_amp=di_before_amp,
+    ))
+    return xml, warnings
 
-    # ── Assemble ──────────────────────────────────────────────────────────────
-    xml = AT5P_TEMPLATE.format(
-        guid          = str(uuid.uuid4()),
-        amp_guid      = amp_guid,
-        amp_muted     = amp_muted,
-        amp_params    = amp_params_str,
-        di_before_amp = di_before_amp,
-        null_guid     = NULL_GUID,
-        cab_model     = cab_model,
-        cab_muted     = cab_muted,
-        speaker_a     = speaker_a.replace('-', ''),
-        speaker_b     = speaker_b.replace('-', ''),
-        stompa1_attrs = stompa1_attrs,
-        stompa1_slots = stompa1_slots,
-        stompb1_attrs = stompb1_attrs,
-        stompb1_slots = stompb1_slots,
-        racka_attrs   = racka_attrs,
-        racka_slots   = racka_slots,
-        rackb_attrs   = rackb_attrs,
-        rackb_slots   = rackb_slots,
-        null2_attrs   = null_attrs(2), null2_slots = null_slots(2),
-        null3_attrs   = null_attrs(3), null3_slots = null_slots(3),
-        null4_attrs   = null_attrs(4), null4_slots = null_slots(4),
-        null6_attrs   = null_attrs(6), null6_slots = null_slots(6),
-        description   = tone_key,
-        song          = tone_name,
-    )
 
+def _write_preset(xml: str, tone_name: str, output_dir: Path) -> Path:
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in tone_name)
-    out_path  = output_dir / f"{safe_name}.at5p"
-    out_path.write_text(xml, encoding='utf-8')
-
-    status = "OK" if not warnings else f"OK ({len(warnings)} warnings)"
-    print(f"  {tone_path.name} -> {out_path.name}  [{status}]")
-    for w in warnings:
-        print(f"    ⚠ {w}")
+    out_path = output_dir / f"{safe_name}.at5p"
+    out_path.write_text(xml, encoding="utf-8")
     return out_path
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
+
+def _report(source: str, out_path: Path, warnings: list):
+    status = "OK" if not warnings else f"OK ({len(warnings)} notes)"
+    _safe_print(f"  {source} -> {out_path.name}  [{status}]")
+    for w in warnings:
+        _safe_print(f"    ! {w}")
+
+
+def _safe_print(s: str):
+    """print() that survives a non-UTF-8 console (Windows cp1252)."""
+    try:
+        print(s)
+    except UnicodeEncodeError:
+        print(s.encode("ascii", "replace").decode("ascii"))
+
+
+def convert_tone(tone_path: Path, output_dir: Path, free_mode: bool = False, tier: str = "max",
+                 noise_gate: bool = False):
+    """Convert a Rocksmith+ tone_*.json (toneData.GearList) to an .at5p."""
+    try:
+        tone = json.loads(tone_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"  ERROR reading {tone_path.name}: {e}")
+        return None
+    td = tone.get("toneData", {}) or {}
+    tone_name = td.get("Name", tone_path.stem)
+    tone_key = td.get("Key", tone_name)
+    xml, warnings = build_preset(tone_key, tone_name, td.get("GearList", {}), free_mode=free_mode,
+                                 tier=tier, noise_gate=noise_gate, volume=td.get("Volume"))
+    out_path = _write_preset(xml, tone_name, output_dir)
+    _report(tone_path.name, out_path, warnings)
+    return out_path
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RS2014 / CDLC SUPPORT
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# RS2014 GearList format (from CDLC manifest JSON):
-#   {
-#     "Key": "RageKilling_lead",
-#     "Name": "Killing Lead",
-#     "GearList": {
-#       "Amp":      { "Key": "Amp_MarshallJCM800", "Knobs": {"Amp_MarshallJCM800_Gain": 65, ...} },
-#       "Cabinet":  { "Key": "Cab_Marshall1960a_57_Edge" },
-#       "PrePedal1": { "Key": "Pedal_UKWah", "Knobs": {...} },
-#       ...
-#     }
-#   }
-#
-# Differences from RS+ format:
-#   - Wrapped in GearList directly (no outer toneData key)
-#   - Amp knobs key is "Knobs" not "KnobValues"
-#   - PrePedal3/4 and PostPedal3/4 exist (RS+ only has 1/2)
-#   - RS2014 amp keys can be real brand names (Amp_MarshallJCM800) or
-#     fictional RS keys (Amp_BT45) — both are in AMP_MAP above
-#
-# Everything else (AMP_MAP, rs_knob_to_at5, build_stomp_section,
-# AT5P_TEMPLATE) is reused unchanged.
+# RS2014 song manifests (manifests/*.json inside a .psarc, or arrangements in a
+# feedpak) store tones as:
+#   {"Entries": {"<id>": {"Attributes": {..., "Tones": [
+#       {"Key": "...", "Name": "...", "Volume": -12.0,
+#        "GearList": {"Amp": {"Key": "Amp_...", "KnobValues": {"Amp_..._Gain": 65, ...}},
+#                     "Cabinet": {"Key": "Cab_..._57_Cone"}, "PrePedal1": {...}, ...}}]}}}}
+# Knob values live under "KnobValues" (the toolkit's .tone2014.xml calls them
+# KnobValues too).  "Knobs" is also accepted for older hand-made files.
+# PrePedal3/4 and PostPedal3/4 exist in RS2014 and Rocksmith+.
 
 import re as _re
-
 import xml.etree.ElementTree as _ET
 
 _NS_TONE = "http://schemas.datacontract.org/2004/07/RocksmithToolkitLib.DLCPackage.Manifest.Tone"
@@ -1806,12 +2020,7 @@ _NS_XSI  = "http://www.w3.org/2001/XMLSchema-instance"
 def _parse_tone2014_xml(path: Path):
     """
     Parse a .tone2014.xml file (WCF-serialised Rocksmith 2014 tone).
-    Returns a list of tone dicts with keys: key, name, gear (GearList dict).
-
-    GearList dict format mirrors _parse_rs2014_json output:
-      { "Amp": {"Key": "Amp_HG500", "Knobs": {...}},
-        "Cabinet": {"Key": "Cab_HG215C_57_Cone", "Knobs": {}},
-        "PrePedal1": {"Key": "Pedal_EQ5", "Knobs": {...}}, ... }
+    Returns a list of tone dicts with keys: key, name, gear (GearList dict), volume.
     """
     try:
         tree = _ET.parse(path)
@@ -1827,7 +2036,7 @@ def _parse_tone2014_xml(path: Path):
         return result
 
     def _parse_slot(el):
-        """Parse one GearList slot element into {"Key": ..., "Knobs": {...}}."""
+        """Parse one GearList slot element into {"Key": ..., "KnobValues": {...}}."""
         if el is None:
             return None
         if el.get(f"{{{_NS_XSI}}}nil") == "true":
@@ -1847,7 +2056,7 @@ def _parse_tone2014_xml(path: Path):
                         knobs[k.text.strip()] = float(v.text)
                     except ValueError:
                         pass
-        return {"Key": key, "Knobs": knobs}
+        return {"Key": key, "KnobValues": knobs}
 
     gear_el = _find(root, "GearList")
     if gear_el is None:
@@ -1856,52 +2065,70 @@ def _parse_tone2014_xml(path: Path):
 
     gear = {}
     for slot_name in ["Amp", "Cabinet",
-                       "PrePedal1", "PrePedal2", "PrePedal3", "PrePedal4",
-                       "PostPedal1", "PostPedal2", "PostPedal3", "PostPedal4",
-                       "Rack1", "Rack2", "Rack3", "Rack4"]:
-        slot_el = _find(gear_el, slot_name)
-        parsed = _parse_slot(slot_el)
+                      "PrePedal1", "PrePedal2", "PrePedal3", "PrePedal4",
+                      "PostPedal1", "PostPedal2", "PostPedal3", "PostPedal4",
+                      "Rack1", "Rack2", "Rack3", "Rack4"]:
+        parsed = _parse_slot(_find(gear_el, slot_name))
         if parsed:
             gear[slot_name] = parsed
 
-    key_el  = _find(root, "Key")
+    key_el = _find(root, "Key")
     name_el = _find(root, "Name")
-    tone_key  = key_el.text.strip()  if key_el  is not None and key_el.text  else path.stem
+    vol_el = _find(root, "Volume")
+    tone_key = key_el.text.strip() if key_el is not None and key_el.text else path.stem
     tone_name = name_el.text.strip() if name_el is not None and name_el.text else tone_key
+    try:
+        volume = float(vol_el.text) if vol_el is not None and vol_el.text else None
+    except ValueError:
+        volume = None
+    return [{"key": tone_key, "name": tone_name, "gear": gear, "volume": volume}]
 
-    return [{"key": tone_key, "name": tone_name, "gear": gear}]
 
-
-def convert_tone_rs2014_xml(tone_path: Path, output_dir: Path):
-    """
-    Convert a .tone2014.xml file to .at5p preset(s).
-    Delegates to convert_tone_rs2014() after parsing the XML.
-    Returns list of output paths written.
-    """
-    tones = _parse_tone2014_xml(tone_path)
-    if not tones:
-        return []
+def convert_tone_rs2014_xml(tone_path: Path, output_dir: Path, free_mode: bool = False,
+                            tier: str = "max", noise_gate: bool = False):
+    """Convert a .tone2014.xml file to .at5p preset(s). Returns output paths."""
     out_paths = []
-    for tone in tones:
-        # Reuse the JSON-path converter — same gear dict format
-        # Build a temp structure that _parse_rs2014_json would produce
-        # and call the shared assembly logic directly
+    for tone in _parse_tone2014_xml(tone_path):
         out_paths.extend(_convert_tone_from_gearlist(
-            tone["key"], tone["name"], tone["gear"], tone_path, output_dir))
+            tone["key"], tone["name"], tone["gear"], tone_path, output_dir,
+            free_mode=free_mode, tier=tier, noise_gate=noise_gate, volume=tone.get("volume")))
     return out_paths
+
+
+def _tone_dicts(obj, fallback_key: str):
+    """Every {GearList, Key, Name, Volume} tone found anywhere in obj."""
+    found = []
+
+    def walk(o, parent_key=None):
+        if isinstance(o, dict):
+            if isinstance(o.get("GearList"), dict):
+                key = o.get("Key") or parent_key or fallback_key
+                found.append({"key": key, "name": o.get("Name") or key,
+                              "gear": o["GearList"], "volume": o.get("Volume")})
+                return
+            for k, v in o.items():
+                walk(v, k)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, parent_key)
+
+    walk(obj)
+    return found
 
 
 def _parse_rs2014_json(path: Path):
     """
-    Parse an RS2014 GearList JSON file.  Returns a list of tone dicts,
-    each with keys: key, name, gear (the GearList dict).
+    Parse an RS2014 JSON holding tones.  Returns a list of tone dicts with
+    keys: key, name, gear (the GearList dict), volume.
 
-    Handles three layouts:
-      A) Single tone: top-level has "GearList" key
-      B) Dict of tones: { tone_key: { "GearList": ... }, ... }
-      C) List of tones: [ { "GearList": ... }, ... ]
-
-    Also tolerates trailing commas (present in some RS2014 JSON exports).
+    Finds tones at any depth, so all of these work:
+      A) a single tone: top-level "GearList"
+      B) a dict of tones: { tone_key: { "GearList": ... }, ... }
+      C) a list of tones: [ { "GearList": ... }, ... ]
+      D) a real song manifest: Entries -> <id> -> Attributes -> Tones[]
+      E) a feedpak arrangement: tones -> definitions[]
+    Tolerates trailing commas (present in some RS2014 JSON exports).
+    Duplicate tones (same key + same gear) are returned once.
     """
     raw = path.read_text(encoding="utf-8")
     raw = _re.sub(r",\s*([}\]])", r"\1", raw)   # strip trailing commas
@@ -1910,171 +2137,43 @@ def _parse_rs2014_json(path: Path):
     except Exception as e:
         print(f"  ERROR reading {path.name}: {e}")
         return []
-
-    tones = []
-
-    # Format A: single tone
-    if isinstance(data, dict) and "GearList" in data:
-        tones.append({"key": data.get("Key", path.stem),
-                      "name": data.get("Name", data.get("Key", path.stem)),
-                      "gear": data["GearList"]})
-        return tones
-
-    # Format B: dict of tones
-    if isinstance(data, dict):
-        for k, v in data.items():
-            if isinstance(v, dict) and "GearList" in v:
-                tones.append({"key": k,
-                              "name": v.get("Name", k),
-                              "gear": v["GearList"]})
-        if tones:
-            return tones
-
-    # Format C: list of tones
-    if isinstance(data, list):
-        for item in data:
-            if isinstance(item, dict) and "GearList" in item:
-                tones.append({"key": item.get("Key", "unknown"),
-                              "name": item.get("Name", item.get("Key", "unknown")),
-                              "gear": item["GearList"]})
-        if tones:
-            return tones
-
-    print(f"  WARNING: unrecognised RS2014 JSON layout in {path.name}")
-    return []
-
-
-def convert_tone_rs2014(tone_path: Path, output_dir: Path):
-    """
-    Convert one RS2014 GearList JSON file to .at5p preset(s).
-    One file may contain multiple tones (formats B and C above).
-    Returns list of output paths written.
-    """
-    tones = _parse_rs2014_json(tone_path)
+    tones, seen = [], set()
+    for t in _tone_dicts(data, path.stem):
+        sig = (t["key"], json.dumps(t["gear"], sort_keys=True))
+        if sig not in seen:
+            seen.add(sig)
+            tones.append(t)
     if not tones:
-        return []
+        print(f"  WARNING: no tones (GearList) found in {path.name}")
+    return tones
 
+
+def convert_tone_rs2014(tone_path: Path, output_dir: Path, free_mode: bool = False,
+                        tier: str = "max", noise_gate: bool = False):
+    """
+    Convert one RS2014 JSON (manifest, arrangement or GearList export) to
+    .at5p preset(s).  Returns list of output paths written.
+    """
     out_paths = []
-    for tone in tones:
+    for tone in _parse_rs2014_json(tone_path):
         out_paths.extend(_convert_tone_from_gearlist(
-            tone["key"], tone["name"], tone["gear"], tone_path, output_dir))
+            tone["key"], tone["name"], tone["gear"], tone_path, output_dir,
+            free_mode=free_mode, tier=tier, noise_gate=noise_gate, volume=tone.get("volume")))
     return out_paths
 
 
 def _convert_tone_from_gearlist(tone_key: str, tone_name: str, gear: dict,
-                                 source_path: Path, output_dir: Path,
-                                 free_mode: bool = False,
-                                 tier: str = "max",
-                                 noise_gate: bool = False) -> list:
-    """Shared assembly logic for both JSON and XML RS2014 paths."""
-    warnings  = []
-    out_paths = []
-
-    # ── Amp ──────────────────────────────────────────────────────────────
-    amp_data   = gear.get("Amp", {})
-    rs_amp_key = amp_data.get("Key", "")
-    effective_tier = "cs" if free_mode and tier == "max" else tier
-    amp_guid, amp_exact = lookup_amp(rs_amp_key, free_mode=free_mode, tier=effective_tier)
-
-    if not amp_guid:
-        warnings.append(f"Unknown amp '{rs_amp_key}' -> using null amp")
-        amp_guid = NULL_GUID
-    elif not amp_exact:
-        warnings.append(f"Fuzzy amp match for '{rs_amp_key}'")
-
-    # RS2014 uses "Knobs" dict (not "KnobValues")
-    knob_values = amp_data.get("Knobs", {})
-    amp_params_parts = []
-    for rs_k, rs_v in knob_values.items():
-        at5_name, at5_val = rs_knob_to_at5(rs_k, rs_v, amp_guid)
-        amp_params_parts.append(f'{at5_name}="{at5_val:.4f}"')
-    amp_params_str = " ".join(amp_params_parts)
-
-    # ── Cabinet ───────────────────────────────────────────────────────────
-    cab_data   = gear.get("Cabinet", {})
-    rs_cab_key = cab_data.get("Key", "")
-    is_di_tone = rs_amp_key in DI_AMP_KEYS
-    if is_di_tone:
-        amp_muted     = "1"
-        di_before_amp = "1"
-        cab_muted     = "0"
-        cab_model     = DEFAULT_CAB_4x12
-        speaker_a     = DEFAULT_SPEAKER_A
-        speaker_b     = DEFAULT_SPEAKER_B
-    else:
-        amp_muted     = "0"
-        di_before_amp = "0"
-        cab_model, speaker_a = lookup_cab(rs_cab_key, free_mode=free_mode)
-        speaker_b  = DEFAULT_SPEAKER_B
-        cab_muted  = "0"
-        if rs_cab_key and rs_cab_key not in CAB_ENCLOSURE_MAP:
-            warnings.append(f"Fuzzy/default cab match for '{rs_cab_key}'")
-
-    # ── Pre-amp stomps (PrePedal1-4 -> StompA1 slots 0-3) ────────────────
-    # RS2014 supports up to 4 pre/post pedals; RS+ only 2 — pass all 4.
-    pre_pedals = [gear.get(f"PrePedal{i}", {}) for i in range(1, 5)]
-    stompa1_attrs, stompa1_slots = build_stomp_section(pre_pedals, n_total=6, free_mode=free_mode, noise_gate=noise_gate)
-    for p in pre_pedals:
-        k = p.get("Key", "") if p else ""
-        if k and not lookup_effect(k):
-            warnings.append(f"Unmapped pre-pedal '{k}' -> empty slot")
-
-    # ── Post stomps (PostPedal1-4 -> StompB1 slots 0-3) ──────────────────
-    post_pedals = [gear.get(f"PostPedal{i}", {}) for i in range(1, 5)]
-    stompb1_attrs, stompb1_slots = build_stomp_section(post_pedals, n_total=6, free_mode=free_mode)
-    for p in post_pedals:
-        k = p.get("Key", "") if p else ""
-        if k and not lookup_effect(k):
-            warnings.append(f"Unmapped post-pedal '{k}' -> empty slot")
-
-    # ── Rack effects ──────────────────────────────────────────────────────
-    racks = [gear.get(f"Rack{i}", {}) for i in range(1, 5)]
-    racka_attrs, racka_slots = build_rack_section(racks[0:2], free_mode=free_mode)
-    rackb_attrs, rackb_slots = build_rack_section(racks[2:4], free_mode=free_mode)
-    for r in racks:
-        k = r.get("Key", "") if r else ""
-        if k and not lookup_effect(k):
-            warnings.append(f"Unmapped rack '{k}' -> empty slot")
-
-    # ── Assemble ──────────────────────────────────────────────────────────
-    xml = AT5P_TEMPLATE.format(
-        guid          = str(uuid.uuid4()),
-        amp_guid      = amp_guid,
-        amp_muted     = amp_muted,
-        amp_params    = amp_params_str,
-        null_guid     = NULL_GUID,
-        cab_model     = cab_model,
-        cab_muted     = cab_muted,
-        speaker_a     = speaker_a.replace("-", ""),
-        speaker_b     = speaker_b.replace("-", ""),
-        stompa1_attrs = stompa1_attrs,
-        stompa1_slots = stompa1_slots,
-        stompb1_attrs = stompb1_attrs,
-        stompb1_slots = stompb1_slots,
-        racka_attrs   = racka_attrs,
-        racka_slots   = racka_slots,
-        rackb_attrs   = rackb_attrs,
-        rackb_slots   = rackb_slots,
-        null2_attrs   = null_attrs(2), null2_slots = null_slots(2),
-        null3_attrs   = null_attrs(3), null3_slots = null_slots(3),
-        null4_attrs   = null_attrs(4), null4_slots = null_slots(4),
-        null6_attrs   = null_attrs(6), null6_slots = null_slots(6),
-        description   = tone_key,
-        song          = tone_name,
-        di_before_amp = di_before_amp,
-    )
-
-    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in tone_name)
-    out_path  = output_dir / f"{safe_name}.at5p"
-    out_path.write_text(xml, encoding="utf-8")
-
-    status = "OK" if not warnings else f"OK ({len(warnings)} warnings)"
-    print(f"  {source_path.name} [{tone_key}] -> {out_path.name}  [{status}]")
-    for w in warnings:
-        print(f"    ⚠ {w}")
-    out_paths.append(out_path)
-
-    return out_paths
+                                source_path: Path, output_dir: Path,
+                                free_mode: bool = False,
+                                tier: str = "max",
+                                noise_gate: bool = False,
+                                volume=None) -> list:
+    """Shared entry point for the RS2014 JSON/XML paths and routes.py."""
+    xml, warnings = build_preset(tone_key, tone_name, gear, free_mode=free_mode, tier=tier,
+                                 noise_gate=noise_gate, volume=volume)
+    out_path = _write_preset(xml, tone_name, output_dir)
+    _report(f"{source_path.name} [{tone_key}]", out_path, warnings)
+    return [out_path]
 
 
 def main():
@@ -2098,7 +2197,14 @@ RS2014 JSON files are the manifest JSONs extracted from a CDLC archive
                         help="Input is RS2014 CDLC manifest GearList JSON format (not RS+ tone_*.json)")
     parser.add_argument("--rs2014-xml", action="store_true",
                         help="Input is RS2014 .tone2014.xml format (from CDLC toolkit exports)")
+    parser.add_argument("--tier", choices=["cs", "se", "at5", "max"], default="max",
+                        help="AmpliTube edition to target (default: max = full library)")
+    parser.add_argument("--free", action="store_true",
+                        help="Free AmpliTube Custom Shop gear only (same as --tier cs)")
+    parser.add_argument("--noise-gate", action="store_true",
+                        help="Insert a noise gate as the first pre-amp effect")
     args = parser.parse_args()
+    opts = dict(free_mode=args.free, tier=args.tier, noise_gate=args.noise_gate)
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2114,13 +2220,13 @@ RS2014 JSON files are the manifest JSONs extracted from a CDLC archive
         return
 
     if getattr(args, 'rs2014_xml', False):
-        n_out = sum(len(convert_tone_rs2014_xml(f, output_dir)) for f in files)
+        n_out = sum(len(convert_tone_rs2014_xml(f, output_dir, **opts)) for f in files)
         print(f"\nDone: {n_out} preset(s) written -> {output_dir}")
     elif args.rs2014:
-        n_out = sum(len(convert_tone_rs2014(f, output_dir)) for f in files)
+        n_out = sum(len(convert_tone_rs2014(f, output_dir, **opts)) for f in files)
         print(f"\nDone: {n_out} preset(s) written -> {output_dir}")
     else:
-        converted = sum(1 for f in files if convert_tone(f, output_dir))
+        converted = sum(1 for f in files if convert_tone(f, output_dir, **opts))
         print(f"\nDone: {converted}/{len(files)} converted -> {output_dir}")
     print(f"Copy .at5p files to:")
     print(f"  C:\\Users\\<you>\\Documents\\IK Multimedia\\AmpliTube 5\\Presets\\")
