@@ -1,5 +1,7 @@
 # Rocksmith → AmpliTube 5 Gear Mapping Reference
 
+> **0.8.0:** this file lists *which* AmpliTube model each Rocksmith model maps to. How each **knob** is converted, and the per-pedal recipes (which can pick a better-fitting model than the tables below), live in `tone_params.py`; see [docs/CONVERSION.md](docs/CONVERSION.md).
+
 Comprehensive mapping of Rocksmith+ (RS+) and Rocksmith 2014 amp, cabinet, and effect
 keys to their real-world equivalents and AmpliTube 5 models. Generated from `rs_to_at5.py`.
 

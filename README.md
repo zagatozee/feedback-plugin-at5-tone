@@ -1,6 +1,8 @@
 # AT5 Tone Switcher — feedBack Plugin
-**v0.7.1** · requires feedBack 0.3.1-alpha.4 or newer
+**v0.8.0** · requires feedBack 0.3.1-alpha.4 or newer
 
+> ⚠️ **0.8.0 is not yet human-validated either.** It converts every pedal, rack, amp, cab-mic and tone-volume setting (earlier versions only set amp knobs), and was checked with automated tests and a conversion of 7,724 real tones, not by ear or in AmpliTube. [docs/HUMAN_VERIFICATION.md](docs/HUMAN_VERIFICATION.md) lists what to check, most important first; see [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
+>
 > ⚠️ **Not yet human-validated.** The 0.7.0 update (feedBack v3 / Desktop) was prepared and shared by Claude (Claude Code in VS Code). Only automated checks have passed so far: the pytest suite, a smoke run against feedBack core 0.3.1-alpha.4, and a headless-browser run of the v3 UI with a *simulated* Desktop audio API. It has not yet been tried by a person with AmpliTube 5 loaded in feedBack Desktop — please report anything that doesn't work.
 
 Automatically switches AmpliTube 5 presets in sync with song playback in feedBack. When you load a song, the plugin extracts the guitar tone data, converts it to AT5 presets, and fires MIDI Program Change messages at the right moments — no manual switching needed.
@@ -96,7 +98,12 @@ The bridge window shows a live log of every MIDI command sent, with **📋 Copy 
 | `screen.js` | Plugin frontend |
 | `screen.html` | Plugin UI |
 | `settings.html` | Settings panel (shown in feedBack Settings page) |
-| `cdlc_to_at5.py` | Tone converter |
+| `cdlc_to_at5.py` | Tone converter (gear selection, chain placement, preset assembly) |
+| `tone_params.py` | Knob-accurate conversion of every Rocksmith knob to AmpliTube parameters |
+| `data/rs_gear_defs.json` | Rocksmith knob definitions (units, ranges, defaults) |
+| `data/at5_gear.json` | AmpliTube model list and preset-learned parameters |
+| `tools/` | Scripts that regenerate `data/` from local Rocksmith 2014 / AmpliTube 5 installs |
+| `docs/` | How conversion works; what still needs human verification |
 | `at5_midi_bridge.py` | MIDI bridge script (Docker fallback) |
 | `generate_at5_pc_map.py` | One-time PC map setup |
 | `docker-compose.feedback.yml` | Compose overlay that mounts the plugin into a feedBack container |
@@ -133,7 +140,9 @@ SE and AT5 tiers route the same amps to closer matches where available (Peavey �
 
 ### Effects in constrained tiers
 
-Effects with no CS equivalent are dropped rather than substituted wrongly. Dropped in CS: pitch shifter, whammy, octave, phaser, ring mod, bit crusher, acoustic/bass emulator, vibe. Everything else (wah, chorus, flanger, overdrive, compressor, delay, reverb, tremolo, noise gate, EQ) is remapped to the closest CS equivalent.
+Effects with no CS equivalent are dropped rather than substituted wrongly. Dropped in CS: pitch shifter, whammy, octave, phaser, ring mod, bit crusher, acoustic/bass emulator, vibe. Everything else (wah, chorus, flanger, overdrive, compressor, delay, reverb, tremolo, noise gate, EQ) is remapped to the closest effect AmpliTube's own CS presets use. Before 0.8.0, free mode crashed on the first effect; see the changelog.
+
+In MAX, every Rocksmith pedal and rack uses the AmpliTube model chosen so its controls have somewhere to go. In lower tiers, knobs are matched by name and unit onto whatever model the tier allows.
 
 ---
 
@@ -253,6 +262,6 @@ This is a feedBack core behaviour affecting all plugins. Use the Live Log tab to
 
 ## How it works
 
-Every CDLC song file contains the guitar tone settings from the original guitar game — amp model, cabinet, pedals, all knob positions. When you load a song, the plugin reads those settings and converts them to AT5 preset files using a mapping of CDLC gear to AT5 equivalents. It writes the presets to 8 reserved PC slots (120–127) and sends MIDI Program Change messages at the correct timestamps during playback.
+Every CDLC song file contains the guitar tone settings from the original guitar game — amp model, cabinet, pedals, all knob positions. When you load a song, the plugin reads those settings and converts them to AT5 preset files using a mapping of CDLC gear to AT5 equivalents. Every knob is converted by its real unit (ms, Hz, dB, %), EQs are rebuilt as curves, and the cab mic, DI preamp and tone volume carry over; see [docs/CONVERSION.md](docs/CONVERSION.md). It writes the presets to 8 reserved PC slots (120–127) and sends MIDI Program Change messages at the correct timestamps during playback.
 
 The first load converts and seeds presets beside the song file in a tier-specific subfolder. Every subsequent load copies them directly — no extraction needed. If you edit a preset in AT5 and save it back, your version loads from then on.
